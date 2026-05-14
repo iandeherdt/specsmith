@@ -56,6 +56,16 @@ Useful flags:
 >
 > Existing entries in `settings.json` are preserved — `init` only *adds* missing entries, it never removes yours.
 
+### Run the loops in an isolated environment
+
+`Bash(*)` means a Claude Code session running in this project can execute *any* shell command the host user can run — including `git push`, reading `.env*` files, hitting your cloud provider CLIs, calling `gh` against your repos, and so on. For anything beyond a personal sandbox, run the loops in an environment with a smaller blast radius:
+
+- **Dedicated SSH key for the agent**: generate a separate key that has push rights only to this repo, and remove the rest of your keys from `ssh-agent` while the loop runs. Limits how far an unintended `git push` can reach.
+- **Docker / devcontainer**: run Claude Code inside a container with the project mounted read-write, your secrets *not* mounted, and outbound network restricted to the registries the project needs. The Playwright MCP container model handles the browser side; the agent process itself can be containerised the same way.
+- **Service account on a server**: stand up a CI-style Linux user (no sudo, scoped credentials, dedicated ssh key, dedicated cloud-provider service account) and run the loops there over SSH. The agent's worst-case behaviour is bounded by what that user can do.
+
+Whichever pattern, the rule of thumb is: assume the agent will at some point execute a command you didn't expect, and make sure that command can't reach anything you can't afford to lose.
+
 ## Edit the constitution
 
 After install, edit `.claude/constitution.md` so it reflects this project's principles. The starter ships with seven broadly applicable principles (Test-First, Security-First, Code Quality & Complexity Control, Component Separation, Library-First, Migrations-Only, Design Fidelity); add, remove, or rewrite to fit.
