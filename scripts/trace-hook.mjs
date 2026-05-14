@@ -4,9 +4,10 @@
 // trace file under pipeline/traces/. Intentionally tiny — must not slow
 // down tool calls.
 
-import { readFileSync, existsSync, mkdirSync, appendFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { shortId, resolveTracePath } from './trace-path.mjs';
 
 const MAX_INPUT_BYTES = 2048;
 const TAIL_BYTES = 512;
@@ -21,15 +22,6 @@ function readStdin() {
 
 function safeJsonParse(s) {
   try { return JSON.parse(s); } catch { return null; }
-}
-
-function shortId(id) {
-  if (!id || typeof id !== 'string') return 'unknown';
-  return id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'unknown';
-}
-
-function isoDate() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function truncate(s, max) {
@@ -145,53 +137,6 @@ function readUsageFromTranscript(transcriptPath) {
     if (usage) return { model, usage };
   }
   return null;
-}
-
-// Per-session sidecar marker so subsequent events for the same session
-// append to the same file. Lives next to the trace file.
-function resolveTracePath(tracesDir, sessionId) {
-  if (!existsSync(tracesDir)) {
-    try { mkdirSync(tracesDir, { recursive: true }); } catch { return null; }
-  }
-  const marker = join(tracesDir, `.session-${sessionId}.path`);
-  if (existsSync(marker)) {
-    try {
-      const cached = readFileSync(marker, 'utf8').trim();
-      if (cached) return cached;
-    } catch {}
-  }
-  // First event for this session: try to inherit a parent run's file by
-  // picking the most recently modified existing run file from today, if
-  // any. This groups subagent sessions into the parent /build run.
-  let chosen = null;
-  try {
-    const today = isoDate();
-    const candidates = readdirSync(tracesDir)
-      .filter((f) => f.startsWith(today) && f.endsWith('.jsonl'))
-      .map((f) => ({ f, mtime: safeStat(join(tracesDir, f)) }))
-      .filter((x) => x.mtime != null)
-      .sort((a, b) => b.mtime - a.mtime);
-    // Inherit only if a sibling run was touched within the last 10 minutes;
-    // otherwise it's a stale file from an earlier run.
-    const recent = candidates[0];
-    if (recent && Date.now() - recent.mtime < 10 * 60 * 1000) {
-      chosen = join(tracesDir, recent.f);
-    }
-  } catch {}
-  if (!chosen) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    chosen = join(tracesDir, `${stamp}-${sessionId}.jsonl`);
-  }
-  try { writeFileSync(marker, chosen); } catch {}
-  return chosen;
-}
-
-function safeStat(path) {
-  try {
-    return statSync(path).mtimeMs;
-  } catch {
-    return null;
-  }
 }
 
 function buildEvent(payload) {

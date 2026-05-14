@@ -56,6 +56,15 @@ Useful flags:
 >
 > Existing entries in `settings.json` are preserved — `init` only *adds* missing entries, it never removes yours.
 
+### Runtime guard against agent flailing
+
+`init` installs `scripts/guard-repeat-commands.mjs` as a `PreToolUse` hook on every `Bash` call. It refuses two patterns mid-run rather than logging them after the fact (real /build traces showed agents falling into both, ignoring prose anti-patterns):
+
+1. **Re-running an expensive command to re-filter output.** If `npm run test/lint/typecheck/build`, `playwright test`, `prisma migrate`, `tsc`, `jest`, `vitest`, `next build`, `cargo`, `go test`, `mvn`, or `gradle` already ran in this session and no `Edit` or `Write` tool call happened since, the second invocation is denied with a message pointing to `tee /tmp/last-out.txt` once, then grep the file. The "base" command is matched after stripping trailing `| grep/tail/head/awk/sed/wc/jq/...` pipes, so re-running with a different filter still counts as a repeat.
+2. **State-wipe loops.** Three or more `rm -rf` of the same path (matching `pglite`, `.next`, `node_modules`, `data/`) within 30 minutes is denied. If the same failure persists after wiping, the bug isn't stale state.
+
+Set `SPECSMITH_GUARD=0` in the environment to bypass both rules.
+
 ### Run the loops in an isolated environment
 
 `Bash(*)` means a Claude Code session running in this project can execute *any* shell command the host user can run — including `git push`, reading `.env*` files, hitting your cloud provider CLIs, calling `gh` against your repos, and so on. For anything beyond a personal sandbox, run the loops in an environment with a smaller blast radius:

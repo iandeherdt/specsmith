@@ -1,0 +1,146 @@
+#!/usr/bin/env node
+// Smoke test for scripts/guard-repeat-commands.mjs.
+// Spawns the hook with synthetic PreToolUse payloads and asserts exit codes.
+// Run with: `node tests/guard-repeat-commands.test.mjs` or `npm test`.
+
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'guard-repeat-commands.mjs');
+
+let failures = 0;
+
+function assert(cond, msg) {
+  if (!cond) { console.error(`FAIL: ${msg}`); failures++; }
+  else { console.log(`ok   ${msg}`); }
+}
+
+function makeCwd() {
+  const cwd = mkdtempSync(join(tmpdir(), 'guard-test-'));
+  mkdirSync(join(cwd, 'pipeline', 'traces'), { recursive: true });
+  return cwd;
+}
+
+function writeTrace(cwd, sessionId, events) {
+  const stamp = '2026-05-14T20-00-00';
+  const path = join(cwd, 'pipeline', 'traces', `${stamp}-${sessionId}.jsonl`);
+  writeFileSync(path, events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+  writeFileSync(join(cwd, 'pipeline', 'traces', `.session-${sessionId}.path`), path);
+  return path;
+}
+
+function runHook(cwd, sessionId, command, env = {}) {
+  const payload = {
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command },
+    session_id: sessionId,
+    cwd,
+  };
+  return spawnSync('node', [HOOK], {
+    input: JSON.stringify(payload),
+    env: { ...process.env, ...env },
+    encoding: 'utf8',
+  });
+}
+
+function evt(ts, tool, extra = {}) {
+  return { ts, session: 'abcd1234', hook: 'PreToolUse', event: 'tool_call', phase: 'pre', tool, ...extra };
+}
+
+// ── Case 1: same expensive command, no edits between → DENY (exit 2) ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', [
+    evt('2026-05-14T20:30:00.000Z', 'Bash', { input: { command: 'npm run typecheck 2>&1 | tail -20' } }),
+    evt('2026-05-14T20:30:30.000Z', 'Read', { input: { file_path: '/foo.ts' } }),
+  ]);
+  const r = runHook(cwd, 'abcd1234', 'npm run typecheck 2>&1 | tail -50');
+  assert(r.status === 2, 'denies re-run of npm run typecheck with no edits between');
+  assert(/Refusing to re-run/.test(r.stderr), 'stderr contains denial message');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 2: same expensive command, with Edit between → ALLOW ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', [
+    evt('2026-05-14T20:30:00.000Z', 'Bash', { input: { command: 'npm run typecheck' } }),
+    evt('2026-05-14T20:30:30.000Z', 'Edit', { input: { file_path: '/foo.ts' } }),
+  ]);
+  const r = runHook(cwd, 'abcd1234', 'npm run typecheck 2>&1 | tail -50');
+  assert(r.status === 0, 'allows re-run after an Edit');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 3: cheap command (ls) repeated → ALLOW ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', [
+    evt('2026-05-14T20:30:00.000Z', 'Bash', { input: { command: 'ls /foo' } }),
+  ]);
+  const r = runHook(cwd, 'abcd1234', 'ls /foo');
+  assert(r.status === 0, 'allows repeated cheap commands');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 4: state-wipe loop (3rd rm -rf data/pglite in 30min) → DENY ──
+{
+  const cwd = makeCwd();
+  const now = new Date();
+  const t = (offsetMin) => new Date(now.getTime() - offsetMin * 60000).toISOString();
+  writeTrace(cwd, 'abcd1234', [
+    evt(t(20), 'Bash', { input: { command: 'rm -rf /tmp/data/pglite' } }),
+    evt(t(10), 'Bash', { input: { command: 'rm -rf /tmp/data/pglite' } }),
+  ]);
+  const r = runHook(cwd, 'abcd1234', 'rm -rf /tmp/data/pglite && echo cleaned');
+  assert(r.status === 2, 'denies 3rd rm -rf data/pglite within 30min');
+  assert(/state wipe/i.test(r.stderr), 'stderr explains the wipe rule');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 5: single state wipe → ALLOW ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  const r = runHook(cwd, 'abcd1234', 'rm -rf /tmp/data/pglite');
+  assert(r.status === 0, 'allows a single rm -rf');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 6: SPECSMITH_GUARD=0 bypass ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', [
+    evt('2026-05-14T20:30:00.000Z', 'Bash', { input: { command: 'npm run typecheck' } }),
+  ]);
+  const r = runHook(cwd, 'abcd1234', 'npm run typecheck', { SPECSMITH_GUARD: '0' });
+  assert(r.status === 0, 'SPECSMITH_GUARD=0 bypasses the guard');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 7: empty trace (first invocation in session) → ALLOW ──
+{
+  const cwd = makeCwd();
+  const r = runHook(cwd, 'fresh001', 'npm run typecheck');
+  assert(r.status === 0, 'allows the first invocation in a fresh session');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 8: same expensive base with different tail/head pipes → DENY ──
+// This is the exact pattern from the failing trace.
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', [
+    evt('2026-05-14T20:30:00.000Z', 'Bash', { input: { command: 'npm run lint 2>&1 | grep "Error:"' } }),
+  ]);
+  const r = runHook(cwd, 'abcd1234', 'npm run lint 2>&1 | grep -B3 "curly"');
+  assert(r.status === 2, 'denies re-grep of same lint output (base command matches)');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+console.log(failures === 0 ? '\nAll tests passed.' : `\n${failures} test(s) failed.`);
+process.exit(failures === 0 ? 0 : 1);
