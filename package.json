@@ -1,0 +1,31 @@
+{
+  "name": "specsmith",
+  "version": "0.1.0",
+  "description": "Claude Code skills, agents, and scripts that drive an end-to-end development workflow: grill the idea, write a PRD, plan it, decompose into tasks, then design + build with Playwright-MCP-driven evaluation.",
+  "bin": {
+    "specsmith": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "agents",
+    "skills",
+    "scripts",
+    "templates",
+    "launch.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "Ian De Herdt",
+  "keywords": [
+    "claude-code",
+    "skills",
+    "agents",
+    "prd",
+    "planning",
+    "playwright",
+    "mcp"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "designs",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "designs", "-l", "4444", "--no-clipboard"],
+      "port": 4444
+    }
+  ]
+}
