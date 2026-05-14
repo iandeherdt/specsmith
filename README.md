@@ -50,6 +50,12 @@ Useful flags:
 - `--dry-run` — preview without writing
 - `--force` — overwrite locally-modified files (including `constitution.md`)
 
+### About the permissions init grants
+
+> **Heads up:** `init` adds `Bash(*)` to your `.claude/settings.json` allowlist (alongside `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Agent`, and `mcp__playwright__*`) so the build and design loops aren't interrupted by per-command prompts during dev-server start/stop, `pkill`, `sed`/`awk` runs, test commands, migrations, etc. If your project requires tighter permissions, hand-edit `.claude/settings.json` after install — replace `Bash(*)` with specific patterns like `Bash(npm run *)`, `Bash(npx playwright *)`, `Bash(node .claude/scripts/*)` and so on. The trade-off is you'll start seeing prompts mid-loop when something the agents need wasn't allowlisted.
+>
+> Existing entries in `settings.json` are preserved — `init` only *adds* missing entries, it never removes yours.
+
 ## Edit the constitution
 
 After install, edit `.claude/constitution.md` so it reflects this project's principles. The starter ships with seven broadly applicable principles (Test-First, Security-First, Code Quality & Complexity Control, Component Separation, Library-First, Migrations-Only, Design Fidelity); add, remove, or rewrite to fit.
