@@ -56,6 +56,35 @@ Useful flags:
 >
 > Existing entries in `settings.json` are preserved — `init` only *adds* missing entries, it never removes yours.
 
+### Per-project conventions (machine-checked)
+
+Prose rules in agent files ("use Tailwind, no inline styles", "extract SVGs to icon components") get ignored when the developer agent has the prototype's HTML right in front of it and the prototype uses inline styles. specsmith's answer is the same one used by the runtime guard: a programmatic gate the developer must pass before handoff, not another paragraph in the agent prompt.
+
+Opt in with:
+
+```bash
+npx specsmith init --conventions
+```
+
+This drops a starter `.claude/conventions.json` with four sensible default rules:
+
+| Rule | What it catches |
+| --- | --- |
+| `no-inline-styles` | `style={...}` in `.tsx`/`.jsx` files when `tailwind.config.*` exists |
+| `svg-extract` | inline `<svg>` blocks > 200 chars outside `src/components/icons/**` |
+| `data-access-pattern` | direct DB/ORM calls (`db.select/.insert/.transaction/...`, `prisma.<model>.findUnique/.create/.update/...`) anywhere outside `src/lib/**/repository.ts` or `src/db/**` — explicitly catches the "called the database from a component / route handler / job" anti-pattern |
+| `i18n-strings` | multi-word user-facing strings inlined in JSX or in a11y attributes (`placeholder`, `aria-label`, `title`, `alt`, `label`) |
+
+Each rule is a JSON object with `name`, `filesGlob`, optional `excludeGlob`, `forbiddenPattern` (JS regex), optional `skipIfMissing` (rule no-ops if the named glob has no matches), and `message`. Edit, add, or remove rules to fit this project's standards. The schema is documented inline in the file.
+
+Three integration points enforce the rules:
+
+1. **`agents/developer.md` Step 4 gate 0**: `node .claude/scripts/check-conventions.mjs` runs *first* in the quality-gate sequence, before typecheck/test/lint. Failure blocks handoff.
+2. **`agents/evaluator.md` Step 3 gate 0**: same script runs as a sanity check after the developer claims done. Any violation surfaces as automatic `[High]` in the feedback (machine-checkable, no judgment).
+3. **`/plan`** detects convention ambiguity at planning time. If the codebase has competing patterns (e.g. some entities use `queries.ts`, others `repository.ts`) and no rule covers it, `/plan` raises an `OQ-###` so you pick one *and* add a rule — rather than letting the next plan pick the other and the codebase drift further.
+
+Bypass per-run with `SPECSMITH_CONVENTIONS=0` in the environment. The script also no-ops gracefully when no `conventions.json` exists, so you can install specsmith without the flag and add conventions later by hand.
+
 ### Closing the loop between /design and /build
 
 The pipeline is `…/plan → /tasks → /design → /build`, and `/design` runs *after* `/tasks`. That order means the designer can introduce regions the plan didn't enumerate (e.g. a summary card the planner left out) and they'd silently disappear from `/build`'s scope unless `/tasks` knows about them.

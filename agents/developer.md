@@ -174,6 +174,16 @@ When all implementation tasks in the phase block are done, run quality gates in 
 
 Do **not** flip `[ ]` → `[x]` in `tasks.md` yourself — that is the evaluator's job, after browser verification. Your handoff is "implementation done, ready for evaluation".
 
+0. **Project conventions**: run
+
+   ```bash
+   node .claude/scripts/check-conventions.mjs
+   ```
+
+   This enforces machine-checkable code rules from `.claude/conventions.json` (no inline styles when Tailwind is configured, SVG extraction, data-access pattern, etc. — depends on what the project has set up). If it exits non-zero, **fix every reported violation before proceeding to the next gate** — do not "note them for the evaluator", do not skip with `SPECSMITH_CONVENTIONS=0` unless a rule is genuinely buggy and needs tuning. The script's output names the file, line, rule, and a one-line fix hint. If `.claude/conventions.json` doesn't exist, the script no-ops and you continue.
+
+   Conventions are not stylistic preferences — they are rules the project decided once so you don't re-litigate them per file. Bypassing them is the same shape as bypassing a typecheck error.
+
 1. **Typecheck (whole repo)**: Typecheck typically runs the whole repo and
    that's fine — it's fast and self-contained. Fix all errors in files you
    touched. Pre-existing errors in untouched files are NOT your responsibility;

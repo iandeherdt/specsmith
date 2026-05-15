@@ -1,0 +1,49 @@
+{
+  "_doc": "Project conventions checked by .claude/scripts/check-conventions.mjs. Each rule scans changed files (staged + unstaged + last commit) for forbiddenPattern within filesGlob minus excludeGlob, and exits 1 if any match. Edit the rules below to fit your project — add new ones, remove ones that don't apply. The script ships with no rules of its own; this file is the source of truth. Bypass with SPECSMITH_CONVENTIONS=0.",
+
+  "_schema": {
+    "name": "stable identifier used in violation reports",
+    "filesGlob": "comma-separated globs; ** matches across path segments, * does not",
+    "excludeGlob": "(optional) comma-separated globs of files to skip even if filesGlob matches",
+    "forbiddenPattern": "JS regex source string; matched against file content",
+    "patternFlags": "(optional) regex flags, default 'mg'",
+    "skipIfMissing": "(optional) glob; if no file in repo matches, the rule no-ops (use to scope rules to projects with specific tooling)",
+    "message": "shown to the developer / evaluator when the rule fires"
+  },
+
+  "rules": [
+    {
+      "name": "no-inline-styles",
+      "filesGlob": "**/*.{tsx,jsx}",
+      "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",
+      "forbiddenPattern": "\\bstyle=\\{",
+      "skipIfMissing": "tailwind.config.*",
+      "message": "Inline styles are forbidden when Tailwind is configured. Use Tailwind utility classes; for dynamic values, use CSS variables in className (e.g. `className=\"[--accent:var(--color-ochre)]\"`). If a one-off truly needs runtime computation, justify it in a code comment."
+    },
+
+    {
+      "name": "svg-extract",
+      "filesGlob": "**/*.{tsx,jsx}",
+      "excludeGlob": "src/components/icons/**,components/icons/**,**/*.test.tsx,**/*.stories.tsx",
+      "forbiddenPattern": "<svg[\\s\\S]{200,}?</svg>",
+      "message": "Extract this SVG into its own file under src/components/icons/<IconName>.tsx and import the component. Inline SVGs over 200 characters bloat the parent component and prevent reuse. Constitution: Component Separation."
+    },
+
+    {
+      "name": "data-access-pattern",
+      "filesGlob": "**/*.{ts,tsx}",
+      "excludeGlob": "src/lib/**/repository.ts,src/lib/**/queries.ts,src/db/**,src/server/db/**,**/*.test.ts,**/*.test.tsx",
+      "forbiddenPattern": "\\b(db|drizzle)\\.(query|select|insert|update|delete|from|transaction|execute|with)\\b|\\bprisma\\.\\w+\\.(findUnique|findFirst|findMany|create|createMany|update|updateMany|delete|deleteMany|upsert|count|aggregate|groupBy)\\b|\\bprisma\\.\\$transaction\\b",
+      "skipIfMissing": "src/db/**",
+      "message": "Direct ORM/database calls are forbidden outside src/lib/<feature>/repository.ts (or src/db/). This applies to React components (server or client), route handlers, server actions, jobs — all of them. Wrap the query in a repository function so callers depend on the domain interface, not the ORM. If your project uses a different data-access location, edit the excludeGlob in .claude/conventions.json."
+    },
+
+    {
+      "name": "i18n-strings",
+      "filesGlob": "**/*.{tsx,jsx}",
+      "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx,src/components/icons/**",
+      "forbiddenPattern": ">\\s*([A-Z][a-z]+(?:\\s+[A-Za-z\\-']+){1,})\\s*<|\\b(?:placeholder|aria-label|title|alt|label)=[\"']([A-Z][a-z]+(?:\\s+[A-Za-z\\-']+)+)[\"']",
+      "message": "User-facing strings should come from i18n message files, not be inlined in JSX. Replace with `{t('namespace.key')}` (or the project's i18n hook) and add the string to your messages file. The pattern catches multi-word phrases starting with a capital — single-word labels like 'Save' are NOT caught (and probably shouldn't be inlined either). If a string is genuinely not user-facing (e.g. a test ID, a CSS class, a programmatic identifier), refactor so the regex doesn't match (e.g. lowercase, or an attribute the rule doesn't scan). If your project doesn't use i18n at all, remove this rule from .claude/conventions.json."
+    }
+  ]
+}

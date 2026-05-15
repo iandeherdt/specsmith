@@ -16,13 +16,17 @@ Commands:
   help      Show this help
 
 Options:
-  --dry-run    Show what would change without writing anything
-  --force      Overwrite existing files / locally-modified files
-  -v, --version  Print package version
+  --dry-run        Show what would change without writing anything
+  --force          Overwrite existing files / locally-modified files
+  --conventions    Install a starter .claude/conventions.json (opt-in;
+                   the check-conventions script ships either way and
+                   no-ops when no conventions.json exists)
+  -v, --version    Print package version
 
 Examples:
   npx ${pkg.name} init
   npx ${pkg.name} init --dry-run
+  npx ${pkg.name} init --conventions
   npx ${pkg.name} update
   npx ${pkg.name} update --force
 `;
@@ -32,6 +36,7 @@ function parseFlags(argv) {
   return {
     dryRun: flags.has('--dry-run'),
     force: flags.has('--force'),
+    conventions: flags.has('--conventions'),
   };
 }
 

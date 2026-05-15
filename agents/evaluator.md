@@ -435,6 +435,14 @@ rm -f pipeline/dev-server-url pipeline/designs-server-url
 
 NOW you may read source code. Check for the current phase's stories:
 
+0. **Project conventions** — run as a sanity check on the developer's work:
+
+   ```bash
+   node .claude/scripts/check-conventions.mjs
+   ```
+
+   This is the same script the developer was supposed to run as their first quality gate. If it reports violations, the developer either skipped it or bypassed with `SPECSMITH_CONVENTIONS=0`. Treat any violation here as automatic **[High]** severity in your feedback — these rules are machine-checked, no judgment calls. Cite the file, line, and rule name from the script output verbatim. If `.claude/conventions.json` doesn't exist, the script no-ops and you continue.
+
 1. **Component separation**: Components in their own files. A `page.tsx` should be a thin composition shell, not a monolith. Everything in one file = **High** severity.
 2. **Code quality**: No file over the constitution's line cap. Functions are focused. Linting passes.
 3. **Test coverage**: Tests exist for acceptance criteria. They pass.
