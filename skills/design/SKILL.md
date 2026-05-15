@@ -92,6 +92,25 @@ Read the critic's output:
 - COMPLETE → log success, stop
 - Neither → log failure, loop back to Step 1
 
+## After the loop passes
+
+When the critic outputs `PERFECT` or `COMPLETE`, do NOT immediately tell the user to run `/build`. The designer agent often introduces top-level regions the plan didn't enumerate (e.g. a portfolio summary card the plan didn't list because the PRD's free-text "always-on baseline of X, Y, Z" was interpreted differently by the planner and the designer). If those regions never make it into `tasks.md`, `/build` will implement only what `tasks.md` says and the missing regions never appear in the rendered page.
+
+Always end with this hand-off message:
+
+```
+Design loop passed at cycle [N], score [X.X/10].
+
+The designer wrote designs/coverage.md listing every prototype's top-level
+regions. Run /tasks again before /build — it will merge in any regions the
+designer introduced beyond what the plan enumerated. Existing [x] checkmarks
+are preserved.
+
+Next: /tasks  →  /build
+```
+
+If the user skips `/tasks` and goes straight to `/build`, the evaluator's Step 2b mechanical region check is the safety net — but closing the loop at `/tasks` time is cheaper than fixing it after the developer has already implemented the wrong scope.
+
 ## Logging
 
 Append to `pipeline/build-log.md`:

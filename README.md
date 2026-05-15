@@ -56,6 +56,19 @@ Useful flags:
 >
 > Existing entries in `settings.json` are preserved — `init` only *adds* missing entries, it never removes yours.
 
+### Closing the loop between /design and /build
+
+The pipeline is `…/plan → /tasks → /design → /build`, and `/design` runs *after* `/tasks`. That order means the designer can introduce regions the plan didn't enumerate (e.g. a summary card the planner left out) and they'd silently disappear from `/build`'s scope unless `/tasks` knows about them.
+
+specsmith closes this loop in three places:
+
+1. **`agents/designer.md`** writes `designs/coverage.md` listing every prototype's top-level regions with stable component names. This is the machine-readable bridge between the designer and `/tasks`.
+2. **`/design`** ends with a hand-off message telling you to re-run `/tasks` before `/build`. The recommended pipeline becomes: `/plan → /tasks → /design → /tasks → /build` (the second `/tasks` runs in *merge mode*, appending tasks for newly-introduced regions and preserving any `[x]` checkmarks from the first run).
+3. **`agents/evaluator.md` Step 2b** does a mechanical region diff between the prototype's accessibility-tree snapshot and the implementation's. Any top-level landmark in the prototype that's missing from the implementation is automatic `[High]` severity — no editorial judgment about "section vs detail". This is the safety net if you skipped step 2 and went straight to `/build`.
+4. **`/build`** explicitly forbids deferring design-fidelity issues as "scope creep". Plan-vs-design tension is resolved by updating the plan/tasks (re-run `/tasks`), never by ignoring the design.
+
+Together these turn "the designer added something the plan didn't list" from a silent miss into either a merged task (best case) or a phase-blocking [High] (worst case).
+
 ### Runtime guard against agent flailing
 
 `init` installs `scripts/guard-repeat-commands.mjs` as a `PreToolUse` hook on every `Bash` call. It refuses two patterns mid-run rather than logging them after the fact (real /build traces showed agents falling into both, ignoring prose anti-patterns):

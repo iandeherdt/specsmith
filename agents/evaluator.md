@@ -348,27 +348,26 @@ For **each** Given/When/Then criterion from `<spec-branch>/prd.md` for the stori
 
 ### 2b — Check design fidelity (conditional)
 
-Run this step ONLY if ALL of the following are true:
+Run this step if BOTH of these are true:
 - A `designs/` directory exists in the repo root, AND
-- It contains a prototype file matching a page touched by this phase's stories, AND
-- The phase tasks involve UI work (skip for API-only, data-model-only,
-  or infra-only phases)
+- The phase tasks involve UI work (skip for API-only, data-model-only, or infra-only phases)
 
-If any of those are false, skip this step silently. Do NOT mention "no designs
-directory" or "no matching prototype" in the feedback file — just skip.
+For each acceptance criterion in this phase, derive the route from its Given/When/Then ("When the user navigates to /dashboard") and look for `designs/<route-slug>.html` (e.g. `dashboard.html`, `contacts-list.html`). If a matching prototype exists, the fidelity check below is **mandatory** for that route. Do NOT make a judgment call about whether the prototype is "in scope" — its existence is the contract.
 
-When the check IS relevant, it is mandatory and design mismatches are
-phase-blocking [High] severity. The rest of this section (layout pattern,
-structure, details) is unchanged.
+If `designs/coverage.md` exists (written by the designing-interfaces agent), use it as the authoritative list of regions per prototype. Bullets like `` - `<ComponentName>` — <purpose> `` enumerate the top-level regions you must verify.
 
 1. Start the designs server via the pipeline helper, which records the URL to a separate file so it doesn't collide with the dev-server URL:
    ```bash
    DESIGNS_URL=$(node .claude/scripts/start-dev-server.mjs --url-file=pipeline/designs-server-url --log=pipeline/designs-server.log -- npx serve designs -l 3100)
    ```
-   Then `mcp__playwright__browser_navigate` to `<DESIGNS_URL>/<prototype>.html`. After the comparison, stop the designs server with `pkill -f 'serve designs'` and remove `pipeline/designs-server-url`.
-2. Take a screenshot at desktop width (use `mcp__playwright__browser_resize` to set the viewport, then `mcp__playwright__browser_take_screenshot`)
-3. Navigate to the corresponding page on the dev server and take a screenshot at the same width
-4. Compare the two screenshots side by side:
+   Then `mcp__playwright__browser_navigate` to `<DESIGNS_URL>/<prototype>.html`.
+2. **Snapshot the prototype.** Take `mcp__playwright__browser_snapshot` against the prototype URL. Extract the set of top-level landmarks (any `role="region"`, `<section>`, `<aside>`, `<main>`, or top-level direct child of the page's main grid/flex container). Call this set `P`.
+3. **Snapshot the implementation.** Navigate to the corresponding route on the dev server, take `mcp__playwright__browser_snapshot`. Extract the same set of top-level landmarks. Call it `I`.
+4. **Mechanical comparison — no judgment calls.** Compute `missing = P - I` (regions present in the prototype but absent from the implementation). For each region in `missing`:
+   - **Severity is automatic [High], regardless of size or visual prominence.** A "summary card" the implementer skipped is the same severity as a missing nav bar — both are top-level landmarks the prototype defined. Do not downgrade to [Med] because a region "looks small" or "isn't load-bearing"; that judgment is what lets phases pass with visible visual gaps.
+   - Cross-reference `designs/coverage.md` if it exists. If the prototype's top-level region maps to a `<ComponentName>` in coverage.md, name the component in the feedback for the developer.
+   - Cite the missing region's text content (heading, label) so the developer can locate it in the prototype HTML.
+5. **Take screenshots** at desktop width for the prototype and the implementation, side by side. Required as evidence for any [High] severity issue from step 4.
 
 **Layout pattern — automatic [High] severity if wrong:**
 - Full page design → implementation must be full page (not modal/drawer)
@@ -376,16 +375,20 @@ structure, details) is unchanged.
 - Split layout → implementation must match the split
 - Fundamentally different layout = **High severity, phase cannot pass**
 
-**Structure — [High] severity if wrong:**
-- Same sections, same visual order, same hierarchy
-- Missing sections or wrong ordering = **High severity**
-
 **Details — use `mcp__playwright__browser_evaluate` running `getComputedStyle(document.querySelector('<selector>'))` (or rely on `mcp__playwright__browser_snapshot`) — [Med] severity if wrong:**
 - Colours, typography, spacing, border radii, shadows
 - Interactive states (hover, focus, active)
 - Responsive behaviour
 
-**A design exists to be followed.** If the implementation looks noticeably different from the design, that is a failure — not a minor issue. The developer must match the design, not interpret it creatively.
+After the comparison, stop the designs server with `pkill -f 'serve designs'` and remove `pipeline/designs-server-url`.
+
+**A design exists to be followed.** If a top-level region is missing or the implementation looks noticeably different from the design, that is a [High] failure. The developer must match the design, not interpret it creatively. If the developer has a reason to deviate, that is a constitution waiver decision — not a unilateral evaluator one.
+
+**Empty-state caveat.** If the route is conditionally-rendered (cards hidden when there's no data) and you didn't seed data before the comparison, your `I` set will be wrong (you'll see fewer regions than the implementation actually defines). Either:
+- Seed enough data to render every region the prototype defines, OR
+- Note in the feedback file that the empty-state path was scored, and explicitly defer the populated-state fidelity check to a re-run where data can be seeded.
+
+Record the seed command in `pipeline/environment-facts.md` once you discover it so future cycles skip discovery.
 
 ### 2c — Capture reusable knowledge, then stop servers
 

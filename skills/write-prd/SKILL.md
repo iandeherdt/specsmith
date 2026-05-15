@@ -44,6 +44,19 @@ Numbers are stable identifiers. Once assigned, do not renumber when adding items
 - If the user has not specified a success criterion for a goal, that is an `OQ`, not an `SC`.
 - If the user gave a vague target ("fast", "soon", "lots of users"), either ask one last clarifying question or log it as an OQ — do not pick a number for them.
 
+## Split free-text enumerations into discrete FRs
+
+When the user describes a feature with a comma-separated list — "the dashboard shows cashflow, new leases starting, and next expected payments", "the form has email, password, and remember-me", "the report exports to PDF, CSV, and JSON" — each item becomes its own `FR-###`. Do NOT collapse them into a single FR with a free-text bullet list.
+
+This rule exists because of a real failure (Phase 4 of `002-landlord-dashboard`, 2026-05-15): the PRD had a single FR-025 that read "always-on baseline of cashflow, new leases starting, next expected payments". The `/plan` skill enumerated 6 cards in its files-to-touch table; the `/design` skill produced 7+ cards (interpreting the requirement more richly); the `/build` skill implemented 6; the missing card was deferred as "scope creep" because the plan didn't enumerate it. Discrete FRs would have removed the interpretation drift — every consumer downstream sees the same enumerated items.
+
+Procedure:
+
+- A comma-separated list of nouns or noun-phrases inside a single requirement → split each item into its own FR. Use sequential numbering (`FR-N`, `FR-N+1`, `FR-N+2`).
+- A list of conditions/qualifiers on the same noun is NOT a split case ("save when valid, complete, and within rate limits" is one FR with three conditions).
+- If the user explicitly asks for the items grouped ("treat these as one bundle, ship together"), keep them in one FR — but note the grouping decision in the FR text so downstream knows it was intentional.
+- When in doubt, split. Two narrow FRs are easier to plan, design, and verify than one wide one.
+
 ## After writing
 
 Print:

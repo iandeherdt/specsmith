@@ -18,12 +18,40 @@ Read in this order:
 1. `specs/NNN-<feature-slug>/plan.md`
 2. `specs/NNN-<feature-slug>/data-model.md`
 3. `specs/NNN-<feature-slug>/prd.md` (for cross-checking SC-### coverage)
+4. `designs/coverage.md` if it exists (only relevant in merge mode — see below)
 
 If `plan.md` or `data-model.md` is missing, stop and tell the user to run `/plan` first.
 
 ## Output
 
-Write `specs/NNN-<feature-slug>/tasks.md` in the same spec folder. If it already exists, ask whether to overwrite. Do **not** create a new branch — `/tasks` runs on the existing feature branch.
+Write `specs/NNN-<feature-slug>/tasks.md` in the same spec folder. Two execution modes:
+
+- **Fresh mode**: `tasks.md` does not exist → generate from scratch using the template.
+- **Merge mode**: `tasks.md` already exists AND `designs/coverage.md` exists → run the merge procedure below; do NOT regenerate from scratch.
+- **Ambiguous**: `tasks.md` exists but `designs/coverage.md` does not → ask the user whether to overwrite (`/tasks --force` semantics) or stop.
+
+Do **not** create a new branch — `/tasks` runs on the existing feature branch.
+
+## Merge mode
+
+The typical pipeline runs `/tasks` twice: once after `/plan` (fresh, before `/design`), and again after `/design` (merge, to add tasks for regions the designer introduced beyond what the plan enumerated). The merge step is what closes the loop between design and implementation — without it, regions in the prototype that aren't in `plan.md` get silently dropped from the implementation pipeline.
+
+Procedure:
+
+1. **Read `designs/coverage.md`.** Each `## designs/<file>.html` section lists top-level regions as bullets like `` - `<ComponentName>` — <purpose> ``. Collect every `<ComponentName>` (the part inside backticks).
+2. **Read existing `tasks.md`.** For each component name from step 1, search the entire `tasks.md` for a substring match (case-sensitive). A match means an existing task already covers it (whether `[ ]` or `[x]`).
+3. **Identify orphans.** Component names from coverage.md with NO match in tasks.md are orphan regions — they have no implementation task and would silently disappear from `/build`'s scope.
+4. **Append orphan tasks.** For each orphan, append two lines to the most appropriate phase (default: the UI phase). Use the Edit tool — read the file, find the phase header, insert before the next phase header (or at end of file if it's the last phase). Format:
+   ```markdown
+   - [ ] Implement `<ComponentName>` for designs/<file>.html — <purpose from coverage.md>
+   - [ ] Verify `<ComponentName>` renders to match designs/<file>.html (Playwright structural diff vs prototype)
+   ```
+5. **Preserve existing checkmarks.** Never flip `[x]` to `[ ]`. Never remove existing tasks even if the prototype no longer references them — the evaluator caught the implementation; removing tasks would lose history.
+6. **Print a summary.** "Merged N orphan regions from designs/coverage.md into tasks.md: ComponentA, ComponentB, …" If N=0, print "All design regions already covered by existing tasks." so the user knows the merge ran and was a no-op.
+
+Stop without modifying anything if:
+- `designs/coverage.md` is malformed (no `## designs/` sections, or a section has no bullets) — tell the user the designer's coverage report is broken
+- A `<ComponentName>` collides with a substring in an unrelated task (very rare; flag the ambiguity for the user to resolve manually)
 
 ## Phases
 

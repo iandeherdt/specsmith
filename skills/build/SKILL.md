@@ -163,3 +163,20 @@ Verdict: [PASS — moving to next phase / FAIL — retrying with feedback]
 - Pass the full feedback file path to the developer on retries
 - A phase with unresolved High-severity issues NEVER passes, even if the score is above threshold
 - If the evaluator's feedback has zero screenshots or says browser tools were unavailable, treat it as invalid and retry
+
+## Design-fidelity issues are NEVER scope creep
+
+This rule exists because of a real failure mode (Phase 4 of `002-landlord-dashboard`, 2026-05-15): the cycle-1 evaluator flagged a missing prototype region (a Portefeuille summary card present in `designs/dashboard.html` but absent from the implementation), and the orchestrator told the cycle-2 developer "do NOT add it — plan.md only enumerates 6 cards, this is scope creep." The phase then passed at 9.0/10 with the visual gap intact.
+
+That was wrong. The prototype is the contract per the constitution's Design Fidelity principle. When `plan.md` and `designs/*.html` disagree about scope, the design wins for visual structure.
+
+When you write the cycle-N+1 developer prompt:
+
+- **NEVER** add an "explicitly out of scope" / "do NOT add" instruction for any item the evaluator flagged as a **design-fidelity gap** (missing prototype region, layout mismatch, structurally absent section). These are, by definition, in scope — the prototype defined the scope at `/design` time.
+- If the evaluator flagged a missing region but the corresponding task is not in `tasks.md`, you have two options:
+  1. **Preferred**: stop the loop, print "Design fidelity gap detected — `tasks.md` is missing tasks for prototype region(s) [...]. Re-run `/tasks` to merge in the missing regions, then re-invoke `/build`." Then exit without invoking another developer cycle. The user re-runs `/tasks` (which will merge in the orphan regions from `designs/coverage.md`) and re-invokes `/build`, which then continues the phase with the merged scope.
+  2. **Acceptable** (when the gap is one or two items and re-running `/tasks` would be heavyweight): include the missing region in the next cycle's fix list AND in the same turn append the corresponding task(s) to `tasks.md` yourself with the Edit tool, so the evaluator's bookkeeping stays accurate.
+
+The wrong move is the third option — telling the developer "don't bother, it's scope creep". Plan-vs-design tension is real, but it is resolved by updating the plan/tasks, not by ignoring the design.
+
+The constitution's Design Fidelity principle is the tiebreaker, not `plan.md`'s files-to-touch table.
