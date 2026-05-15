@@ -309,5 +309,99 @@ export const X = () => (
   rmSync(root, { recursive: true, force: true });
 }
 
+// ── Case 14: maxLines fires above threshold ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'component-size',
+      filesGlob: 'src/components/**/*.tsx',
+      maxLines: 50,
+      message: 'Too big. Extract.',
+    }],
+  });
+  const big = Array.from({ length: 60 }, (_, i) => `// line ${i + 1}`).join('\n');
+  writeSrc(root, 'src/components/Big.tsx', big);
+  const r = run(root);
+  assert(r.status === 1, 'maxLines fires when file > threshold');
+  assert(/component-size/.test(r.stderr), 'stderr names the rule');
+  assert(/60 lines, max 50/.test(r.stderr), 'stderr reports actual vs max');
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── Case 15: maxLines does NOT fire at or below threshold ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'component-size',
+      filesGlob: 'src/components/**/*.tsx',
+      maxLines: 50,
+      message: 'Too big.',
+    }],
+  });
+  const ok = Array.from({ length: 50 }, (_, i) => `// line ${i + 1}`).join('\n');
+  writeSrc(root, 'src/components/Ok.tsx', ok);
+  const r = run(root);
+  assert(r.status === 0, 'maxLines does not fire at threshold');
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── Case 16: rule with maxLines AND no forbiddenPattern is valid ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'size-only',
+      filesGlob: '**/*.tsx',
+      maxLines: 10,
+      message: 'Too big.',
+    }],
+  });
+  writeSrc(root, 'foo.tsx', 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\n');
+  const r = run(root);
+  assert(r.status === 1, 'maxLines-only rule fires');
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── Case 17: rule with neither maxLines nor forbiddenPattern is rejected ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'broken',
+      filesGlob: '**/*.tsx',
+      message: 'Nope.',
+    }],
+  });
+  writeSrc(root, 'foo.tsx', 'export const X = <div />;');
+  const r = run(root);
+  assert(r.status === 0, 'rule with no check is silently skipped (warning to stderr, but no violations)');
+  assert(/must specify forbiddenPattern, maxLines, or both/.test(r.stderr), 'stderr explains why the rule was skipped');
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── Case 18: maxLines + forbiddenPattern both fire ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'big-and-bad',
+      filesGlob: '**/*.tsx',
+      maxLines: 5,
+      forbiddenPattern: '\\bstyle=\\{',
+      message: 'Bad.',
+    }],
+  });
+  writeSrc(root, 'foo.tsx', 'a\nb\nc\nd\ne\nf\n<div style={{}} />\n');
+  const r = run(root);
+  assert(r.status === 1, 'combined rule fires');
+  // Should report BOTH the size violation and the regex violation
+  const sizeMatch = /lines, max 5/.test(r.stderr);
+  const patternMatch = /style=\{/.test(r.stderr);
+  assert(sizeMatch && patternMatch, 'both checks fire on the same file');
+  rmSync(root, { recursive: true, force: true });
+}
+
 console.log(failures === 0 ? '\nAll tests passed.' : `\n${failures} test(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

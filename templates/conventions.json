@@ -5,8 +5,9 @@
     "name": "stable identifier used in violation reports",
     "filesGlob": "comma-separated globs; ** matches across path segments, * does not",
     "excludeGlob": "(optional) comma-separated globs of files to skip even if filesGlob matches",
-    "forbiddenPattern": "JS regex source string; matched against file content",
+    "forbiddenPattern": "(optional if maxLines is set) JS regex source string; matched against file content",
     "patternFlags": "(optional) regex flags, default 'mg'",
+    "maxLines": "(optional if forbiddenPattern is set) integer; file is in violation when its line count exceeds this number — one violation per oversized file",
     "skipIfMissing": "(optional) glob; if no file in repo matches, the rule no-ops (use to scope rules to projects with specific tooling)",
     "message": "shown to the developer / evaluator when the rule fires"
   },
@@ -44,6 +45,14 @@
       "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx,src/components/icons/**",
       "forbiddenPattern": ">\\s*([A-Z][a-z]+(?:\\s+[A-Za-z\\-']+){1,})\\s*<|\\b(?:placeholder|aria-label|title|alt|label)=[\"']([A-Z][a-z]+(?:\\s+[A-Za-z\\-']+)+)[\"']",
       "message": "User-facing strings should come from i18n message files, not be inlined in JSX. Replace with `{t('namespace.key')}` (or the project's i18n hook) and add the string to your messages file. The pattern catches multi-word phrases starting with a capital — single-word labels like 'Save' are NOT caught (and probably shouldn't be inlined either). If a string is genuinely not user-facing (e.g. a test ID, a CSS class, a programmatic identifier), refactor so the regex doesn't match (e.g. lowercase, or an attribute the rule doesn't scan). If your project doesn't use i18n at all, remove this rule from .claude/conventions.json."
+    },
+
+    {
+      "name": "component-size-cap",
+      "filesGlob": "src/components/**/*.{tsx,jsx},components/**/*.{tsx,jsx},app/**/*.{tsx,jsx}",
+      "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",
+      "maxLines": 300,
+      "message": "Component file exceeds 300 lines. Files this large almost always mix concerns — view markup, state, data fetching, derivations, validation. Extract: data fetching to a hook (src/hooks/use<X>.ts), derivations to a selector (src/lib/<feature>/selectors.ts), validation to a schema file, sub-views to child components. The cap is a proxy for 'this component is doing too much' — the regex can't tell which kind of logic to extract; you decide. Tune `maxLines` in .claude/conventions.json if 300 is too tight or too loose for your project."
     }
   ]
 }

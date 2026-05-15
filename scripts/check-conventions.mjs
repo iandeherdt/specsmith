@@ -174,12 +174,24 @@ function lineOf(content, index) {
 
 function checkRule(rule, files) {
   if (rule.skipIfMissing && !anyFileMatching(rule.skipIfMissing)) return [];
-  const flags = rule.patternFlags || 'mg';
-  let re;
-  try { re = new RegExp(rule.forbiddenPattern, flags); } catch (err) {
-    process.stderr.write(`check-conventions: rule "${rule.name}" has invalid regex: ${err.message}\n`);
+
+  // A rule must specify at least one check: forbiddenPattern OR maxLines.
+  const hasPattern = typeof rule.forbiddenPattern === 'string' && rule.forbiddenPattern.length > 0;
+  const hasMaxLines = Number.isInteger(rule.maxLines) && rule.maxLines > 0;
+  if (!hasPattern && !hasMaxLines) {
+    process.stderr.write(`check-conventions: rule "${rule.name}" must specify forbiddenPattern, maxLines, or both\n`);
     return [];
   }
+
+  const flags = rule.patternFlags || 'mg';
+  let re = null;
+  if (hasPattern) {
+    try { re = new RegExp(rule.forbiddenPattern, flags); } catch (err) {
+      process.stderr.write(`check-conventions: rule "${rule.name}" has invalid regex: ${err.message}\n`);
+      return [];
+    }
+  }
+
   const violations = [];
   for (const file of files) {
     if (!matchesAnyGlob(file, rule.filesGlob)) continue;
@@ -188,17 +200,35 @@ function checkRule(rule, files) {
     if (!existsSync(full)) continue;
     let content;
     try { content = readFileSync(full, 'utf8'); } catch { continue; }
-    let m;
-    re.lastIndex = 0;
-    while ((m = re.exec(content)) !== null) {
-      violations.push({
-        file,
-        line: lineOf(content, m.index),
-        rule: rule.name,
-        message: rule.message,
-        excerpt: m[0].slice(0, 120).replace(/\s+/g, ' '),
-      });
-      if (!flags.includes('g')) break;
+
+    // maxLines check (if configured): one violation per file, reported at line 1.
+    if (hasMaxLines) {
+      const lineCount = content.split('\n').length;
+      if (lineCount > rule.maxLines) {
+        violations.push({
+          file,
+          line: 1,
+          rule: rule.name,
+          message: rule.message,
+          excerpt: `file is ${lineCount} lines, max ${rule.maxLines}`,
+        });
+      }
+    }
+
+    // forbiddenPattern check (if configured)
+    if (re) {
+      let m;
+      re.lastIndex = 0;
+      while ((m = re.exec(content)) !== null) {
+        violations.push({
+          file,
+          line: lineOf(content, m.index),
+          rule: rule.name,
+          message: rule.message,
+          excerpt: m[0].slice(0, 120).replace(/\s+/g, ' '),
+        });
+        if (!flags.includes('g')) break;
+      }
     }
   }
   return violations;
@@ -219,10 +249,11 @@ function main() {
 
   const violations = [];
   for (const rule of conventions.rules) {
-    if (!rule.name || !rule.filesGlob || !rule.forbiddenPattern || !rule.message) {
-      process.stderr.write(`check-conventions: rule is missing required field (name/filesGlob/forbiddenPattern/message): ${JSON.stringify(rule)}\n`);
+    if (!rule.name || !rule.filesGlob || !rule.message) {
+      process.stderr.write(`check-conventions: rule is missing required field (name/filesGlob/message): ${JSON.stringify(rule)}\n`);
       continue;
     }
+    // forbiddenPattern OR maxLines is required (checkRule enforces this)
     violations.push(...checkRule(rule, files));
   }
 
