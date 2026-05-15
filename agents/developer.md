@@ -184,6 +184,24 @@ Do **not** flip `[ ]` → `[x]` in `tasks.md` yourself — that is the evaluator
 
    Conventions are not stylistic preferences — they are rules the project decided once so you don't re-litigate them per file. Bypassing them is the same shape as bypassing a typecheck error.
 
+0b. **Design-coverage self-check** (only if `designs/` exists AND this phase touched UI):
+
+   For every route this phase implemented or modified that has a corresponding `designs/<route-slug>.html`, you must enumerate the prototype's regions and confirm each is present in your implementation **before** declaring the phase ready.
+
+   1. **Source the region list.** Prefer `designs/coverage.md` if it exists — the designer agent emits one bullet per top-level region (`` - `<ComponentName>` — <purpose> ``). If `coverage.md` is missing, open the matching `designs/<slug>.html` and list every direct child `<section>` / `<aside>` / `<main>` / `role="region"` / top-level grid child by its heading or label.
+   2. **Tick each region.** In your handoff message to the orchestrator, paste the list as a checklist:
+      ```markdown
+      ### Design coverage — designs/<slug>.html
+      - [x] `<RegionName>` — implemented at `src/components/<file>.tsx`
+      - [x] `<RegionName>` — implemented at `src/app/<route>/page.tsx:<L>`
+      ```
+      Every region must be `[x]`. If you intentionally skipped one because it's out of scope for this phase, mark it `[~]` and cite the task or PRD line that defers it. **Do not mark a region `[x]` if its component does not actually render in the route** — "the file exists" is not the same as "the section appears on the page".
+   3. **If you find a region you missed**, implement it now. This is not scope creep: the prototype defined the scope at design time. Skipping a region here costs a full evaluator cycle to flag and a full developer cycle to fix — catching it yourself is one targeted edit.
+
+   This self-check is what stops the most common failure mode: the evaluator catches a missing region (chip, micro-link, summary card, whole sub-section) on cycle N+1 and the loop pays a full cycle for something the developer could have caught with a five-minute side-by-side compare.
+
+   Skip this entire item ONLY when: no `designs/` folder exists, or this phase did not touch any UI route.
+
 1. **Typecheck (whole repo)**: Typecheck typically runs the whole repo and
    that's fine — it's fast and self-contained. Fix all errors in files you
    touched. Pre-existing errors in untouched files are NOT your responsibility;

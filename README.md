@@ -94,10 +94,19 @@ specsmith closes this loop in three places:
 
 1. **`agents/designer.md`** writes `designs/coverage.md` listing every prototype's top-level regions with stable component names. This is the machine-readable bridge between the designer and `/tasks`.
 2. **`/design`** ends with a hand-off message telling you to re-run `/tasks` before `/build`. The recommended pipeline becomes: `/plan → /tasks → /design → /tasks → /build` (the second `/tasks` runs in *merge mode*, appending tasks for newly-introduced regions and preserving any `[x]` checkmarks from the first run).
-3. **`agents/evaluator.md` Step 2b** does a mechanical region diff between the prototype's accessibility-tree snapshot and the implementation's. Any top-level landmark in the prototype that's missing from the implementation is automatic `[High]` severity — no editorial judgment about "section vs detail". This is the safety net if you skipped step 2 and went straight to `/build`.
-4. **`/build`** explicitly forbids deferring design-fidelity issues as "scope creep". Plan-vs-design tension is resolved by updating the plan/tasks (re-run `/tasks`), never by ignoring the design.
+3. **`agents/developer.md` Step 4 gate 0b** requires the developer to enumerate every region from `designs/coverage.md` (or the matching `designs/<slug>.html`) and check each one off in the handoff before declaring the phase ready. Catches the missing-region failure mode at source — one targeted edit instead of a full evaluator → developer round-trip.
+4. **`agents/evaluator.md` Step 2b** does a mechanical region diff between the prototype's accessibility-tree snapshot and the implementation's. Any top-level landmark in the prototype that's missing from the implementation is automatic `[High]` severity — no editorial judgment about "section vs detail". This is the safety net if you skipped step 2 and went straight to `/build`.
+5. **`/build`** explicitly forbids deferring design-fidelity issues as "scope creep". Plan-vs-design tension is resolved by updating the plan/tasks (re-run `/tasks`), never by ignoring the design.
 
 Together these turn "the designer added something the plan didn't list" from a silent miss into either a merged task (best case) or a phase-blocking [High] (worst case).
+
+### Phase-to-phase signal
+
+Three rules in the evaluator make sure issues don't quietly carry forward across cycles:
+
+1. **Carryover list.** Every feedback file ends with a `## Carryovers (must fix next cycle)` checkbox section. `/build` copies it verbatim into the next cycle's developer prompt — no re-narration, no summarisation. The developer knows exactly which boxes have to be `[x]` before handoff.
+2. **Unmet `FR-###` hard-fails the phase.** A numbered functional requirement is the spec author's named promise to the user. If the implementation doesn't satisfy an FR-### the phase block was supposed to cover, the phase fails regardless of overall score — fixes the failure mode where rubric averaging hides a real spec violation.
+3. **Auto-promote prior `[Med]` when scope grows.** If a prior cycle flagged a cross-cutting concern (provider, layout, i18n setup, error boundary) as `[Med]` and the current phase added new consumers of it, the evaluator escalates it to `[High]` for this cycle — fixes the failure mode where a "small login-only" issue becomes load-bearing the moment 5 new client components depend on it.
 
 ### Runtime guard against agent flailing
 

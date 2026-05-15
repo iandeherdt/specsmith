@@ -481,7 +481,7 @@ Write to `pipeline/feedback/phase-[N]-cycle-[C].md`:
 
 ### Acceptance Criteria Results
 - [x] US-XX AC1: Given … When … Then … — PASSED (screenshot taken)
-- [ ] US-XX AC2: Given … When … Then … — FAILED: [exact reason + screenshot evidence]
+- [ ] US-XX AC2 (FR-###): Given … When … Then … — FAILED: [exact reason + screenshot evidence]
 
 ---
 
@@ -491,9 +491,21 @@ Write to `pipeline/feedback/phase-[N]-cycle-[C].md`:
 ## Issues Found
 1. **[High/Med/Low]** [Description — exact file/line — how to fix]
 
+## Carryovers (must fix next cycle)
+
+Single source of truth for the next cycle's developer prompt. The build orchestrator copies this list verbatim into the next developer invocation, so be precise: each item must name the file/route, the symptom, and the fix. Order by severity (High first), then by where in the codebase the fix lives (group same-file fixes together).
+
+- [ ] **[High]** [file/route] — [what's wrong] — [how to fix]
+- [ ] **[Med]** [file/route] — [what's wrong] — [how to fix]
+- [ ] **[Low]** [file/route] — [what's wrong] — [how to fix]
+
+If the phase passes (no carryovers), write `_None — phase passes._` under the heading.
+
 ## What Worked Well
 - [Acknowledge genuine strengths]
 ```
+
+The Carryovers list is the **operational** contract with the next cycle's developer; "Issues Found" is the human-readable narrative. The two will overlap heavily — that's fine. Keep Carryovers terse and actionable; keep Issues Found explanatory.
 
 ---
 
@@ -503,10 +515,14 @@ Write to `pipeline/feedback/phase-[N]-cycle-[C].md`:
 
 **Unresolved Issues from prior cycles that are STILL unresolved are automatic [High] severity.** If you flagged something last cycle and the developer didn't fix it, escalate it to High and do not pass the phase.
 
+**Unmet FR-### hard-fails the phase, regardless of overall score.** A numbered functional requirement is the spec author's explicit, named promise to the user. If you can identify any FR-### in `prd.md` that the phase block was supposed to satisfy and the implementation doesn't satisfy it (e.g. FR-028 says "results sorted by created_at DESC" and the list is unordered), record it as **[High]** and do not pass the phase even if the rubric total is above threshold. The same rule applies to NFR-### and SC-### items the phase committed to. Cite the exact identifier in the Carryovers entry so the developer can locate it in `prd.md`.
+
+**Auto-promote prior [Med] when scope grows.** If a previous cycle's feedback flagged a [Med] issue about a cross-cutting concern (provider, layout shell, i18n setup, error boundary, auth context, etc.) and the current phase added new code that depends on it, escalate that prior [Med] to [High] for this cycle. The heuristic that triggers promotion: prior [Med] mentioned a symbol/file (e.g. `NextIntlClientProvider`, `RootLayout`) AND the current phase added ≥1 new consumer of it (new `useTranslations()` call site, new client component nested under that provider, etc.). Record it as a fresh [High] in Issues Found AND in Carryovers, citing both the original cycle and the new consumers — "Phase 1 cycle 1 flagged X as [Med] (login-only); Phase 4 added 5 new consumers (file:line, file:line, …) — promoted to [High]".
+
 Signal rules:
-- **Score = 10/10 AND all acceptance criteria `[x]` AND zero High issues AND zero unresolved carry-overs** → output `<promise>PERFECT</promise>` — stops the loop
-- **Score ≥ threshold AND all phase tasks `[x]` AND zero High issues AND zero unresolved carry-overs** → output `<promise>COMPLETE</promise>` — loop continues
-- **Any High issues OR unresolved carry-overs OR score < threshold** → do not signal — write prioritised feedback
+- **Score = 10/10 AND all acceptance criteria `[x]` AND zero High issues AND zero unresolved carry-overs AND every relevant FR-### satisfied** → output `<promise>PERFECT</promise>` — stops the loop
+- **Score ≥ threshold AND all phase tasks `[x]` AND zero High issues AND zero unresolved carry-overs AND every relevant FR-### satisfied** → output `<promise>COMPLETE</promise>` — loop continues
+- **Any High issues OR unresolved carry-overs OR unmet FR-### OR score < threshold** → do not signal — write prioritised feedback
 
 **Critical**: `PERFECT` means the **entire feature** is done — every phase passes. Do NOT output `PERFECT` just because one phase scored 10/10.
 

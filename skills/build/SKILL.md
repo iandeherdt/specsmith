@@ -95,6 +95,34 @@ Call the Agent tool with `subagent_type: "developing-features"` and `model: "son
 - A pointer to `pipeline/run-state.md`
 - The phase block extracted in Step 0, as a fenced markdown block
 - On retries: the path to the prior cycle's feedback file
+- On retries: the **Carryovers list** copied verbatim from the prior cycle's feedback file, embedded as a fenced markdown block
+
+#### Carryover extraction (retries only)
+
+The evaluator writes a `## Carryovers (must fix next cycle)` section in every feedback file. On a retry, extract that block and paste it directly into the developer prompt — do not re-narrate it, do not summarise, do not reorder. The list is the operational contract:
+
+```bash
+PRIOR_FEEDBACK="pipeline/feedback/phase-${PHASE_NUM}-cycle-$((CYCLE - 1)).md"
+awk '
+  /^## Carryovers \(must fix next cycle\)/ { in_block = 1; next }
+  in_block && /^## / { in_block = 0 }
+  in_block
+' "$PRIOR_FEEDBACK"
+```
+
+Embed the result in the developer prompt as:
+
+```
+## Carryovers from Phase [N] Cycle [C-1] (must fix BEFORE new tasks)
+
+```
+[paste carryover block here]
+```
+
+Fix every box above before any new phase task. Each box must be checked when you hand off — the next evaluator cycle will reject the phase if any are still open.
+```
+
+If the carryover block is empty (`_None — phase passes._`) but the orchestrator still scheduled a retry (e.g. score below threshold without High issues — uncommon but possible), fall back to passing the full feedback file path and let the developer infer.
 
 ### Step 1b — Verify environment facts gate
 
