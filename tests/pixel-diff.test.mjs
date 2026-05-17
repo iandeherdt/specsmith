@@ -1,0 +1,109 @@
+// Tests the pure bucketing logic in pixel-diff.mjs. The browser-driven
+// path (Playwright + pixelmatch) is not exercised here — it's covered by
+// real-world use in the evaluator agent and would require Playwright to be
+// installed in this dev environment to test directly.
+
+import assert from 'node:assert';
+import { bucketDiffPixels } from '../scripts/pixel-diff.mjs';
+
+let passed = 0;
+let failed = 0;
+function test(name, fn) {
+  try {
+    fn();
+    console.log(`ok   ${name}`);
+    passed++;
+  } catch (err) {
+    console.log(`FAIL ${name}`);
+    console.log(`     ${err.message}`);
+    failed++;
+  }
+}
+
+// Helper: build a pixelmatch-style RGBA buffer with a red rectangle of
+// diff pixels at (rx, ry) of size (rw, rh) on an otherwise-empty canvas.
+function withDiffRect(width, height, rx, ry, rw, rh) {
+  const buf = Buffer.alloc(width * height * 4);
+  for (let y = ry; y < ry + rh; y++) {
+    for (let x = rx; x < rx + rw; x++) {
+      const idx = (y * width + x) * 4;
+      buf[idx] = 255;     // R
+      buf[idx + 1] = 0;   // G
+      buf[idx + 2] = 0;   // B
+      buf[idx + 3] = 255; // A — full opacity, real diff pixel
+    }
+  }
+  return buf;
+}
+
+test('empty buffer → no regions, no diff pixels', () => {
+  const buf = Buffer.alloc(100 * 100 * 4);
+  const r = bucketDiffPixels(buf, 100, 100, 50, 10);
+  assert.deepStrictEqual(r.regions, []);
+  assert.strictEqual(r.totalDiffPixels, 0);
+});
+
+test('single cluster → one region with correct coords and intensity', () => {
+  const buf = withDiffRect(100, 100, 0, 0, 5, 5);
+  const r = bucketDiffPixels(buf, 100, 100, 50, 10);
+  assert.strictEqual(r.totalDiffPixels, 25);
+  assert.strictEqual(r.regions.length, 1);
+  assert.deepStrictEqual(r.regions[0], { x: 0, y: 0, w: 50, h: 50, intensity: 0.01 });
+});
+
+test('regions sorted by intensity desc, capped at topN', () => {
+  const buf = Buffer.alloc(200 * 200 * 4);
+  // High-intensity cluster at (0,0): 100 diff pixels in a 10x10 block
+  for (let y = 0; y < 10; y++) {
+    for (let x = 0; x < 10; x++) {
+      const idx = (y * 200 + x) * 4;
+      buf[idx] = 255; buf[idx + 3] = 255;
+    }
+  }
+  // Lower-intensity cluster at (100,100): 4 diff pixels in a 2x2 block
+  for (let y = 100; y < 102; y++) {
+    for (let x = 100; x < 102; x++) {
+      const idx = (y * 200 + x) * 4;
+      buf[idx] = 255; buf[idx + 3] = 255;
+    }
+  }
+  const r = bucketDiffPixels(buf, 200, 200, 50, 1);
+  assert.strictEqual(r.regions.length, 1, 'capped at topN');
+  assert.strictEqual(r.regions[0].x, 0, 'highest-intensity region first');
+  assert.strictEqual(r.regions[0].y, 0);
+});
+
+test('grayscale background (r=g=b, alpha<255) is skipped', () => {
+  const buf = Buffer.alloc(50 * 50 * 4);
+  for (let i = 0; i < 50 * 50; i++) {
+    const idx = i * 4;
+    buf[idx] = 200; buf[idx + 1] = 200; buf[idx + 2] = 200; buf[idx + 3] = 100;
+  }
+  const r = bucketDiffPixels(buf, 50, 50, 50, 10);
+  assert.strictEqual(r.totalDiffPixels, 0);
+  assert.strictEqual(r.regions.length, 0);
+});
+
+test('edge cell at non-divisible boundary has truncated dimensions', () => {
+  const buf = withDiffRect(75, 75, 50, 50, 25, 25);
+  const r = bucketDiffPixels(buf, 75, 75, 50, 10);
+  const corner = r.regions.find((c) => c.x === 50 && c.y === 50);
+  assert.ok(corner, 'corner cell present');
+  assert.strictEqual(corner.w, 25);
+  assert.strictEqual(corner.h, 25);
+  assert.strictEqual(corner.intensity, 1);
+});
+
+test('opaque non-red diff pixel still counted (alpha=255 trumps color)', () => {
+  const buf = Buffer.alloc(50 * 50 * 4);
+  // Yellow pixel (AA-like color) but full opacity — pixelmatch sometimes
+  // writes opaque colored pixels for diffs other than red.
+  const idx = (10 * 50 + 10) * 4;
+  buf[idx] = 255; buf[idx + 1] = 255; buf[idx + 2] = 0; buf[idx + 3] = 255;
+  const r = bucketDiffPixels(buf, 50, 50, 50, 10);
+  assert.strictEqual(r.totalDiffPixels, 1);
+  assert.strictEqual(r.regions.length, 1);
+});
+
+console.log(`\n${passed} passed, ${failed} failed.`);
+if (failed > 0) process.exit(1);

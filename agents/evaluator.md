@@ -360,14 +360,37 @@ If `designs/coverage.md` exists (written by the designing-interfaces agent), use
    ```bash
    DESIGNS_URL=$(node .claude/scripts/start-dev-server.mjs --url-file=pipeline/designs-server-url --log=pipeline/designs-server.log -- npx serve designs -l 3100)
    ```
-   Then `mcp__playwright__browser_navigate` to `<DESIGNS_URL>/<prototype>.html`.
-2. **Snapshot the prototype.** Take `mcp__playwright__browser_snapshot` against the prototype URL. Extract the set of top-level landmarks (any `role="region"`, `<section>`, `<aside>`, `<main>`, or top-level direct child of the page's main grid/flex container). Call this set `P`.
-3. **Snapshot the implementation.** Navigate to the corresponding route on the dev server, take `mcp__playwright__browser_snapshot`. Extract the same set of top-level landmarks. Call it `I`.
-4. **Mechanical comparison — no judgment calls.** Compute `missing = P - I` (regions present in the prototype but absent from the implementation). For each region in `missing`:
-   - **Severity is automatic [High], regardless of size or visual prominence.** A "summary card" the implementer skipped is the same severity as a missing nav bar — both are top-level landmarks the prototype defined. Do not downgrade to [Med] because a region "looks small" or "isn't load-bearing"; that judgment is what lets phases pass with visible visual gaps.
-   - Cross-reference `designs/coverage.md` if it exists. If the prototype's top-level region maps to a `<ComponentName>` in coverage.md, name the component in the feedback for the developer.
-   - Cite the missing region's text content (heading, label) so the developer can locate it in the prototype HTML.
-5. **Take screenshots** at desktop width for the prototype and the implementation, side by side. Required as evidence for any [High] severity issue from step 4.
+2. **Run the pixel-diff convention** (primary path):
+   ```bash
+   node .claude/scripts/pixel-diff.mjs --out pipeline/feedback
+   ```
+   The script reads the `pixelDiff` block from `.claude/conventions.json`, pairs each `designs/*.html` with its matching route on the dev server, opens both in headless Chromium at the same viewport, diffs them with pixelmatch, and writes a structured JSON report to stdout plus three PNGs per route to `pipeline/feedback/` (reference, actual, diff overlay).
+
+   Capture and parse the JSON:
+   ```bash
+   PIXEL_DIFF_JSON=$(node .claude/scripts/pixel-diff.mjs --out pipeline/feedback)
+   echo "$PIXEL_DIFF_JSON" > pipeline/feedback/pixel-diff.json
+   ```
+
+   Then branch on `verdict`:
+   - **`verdict: "pass"`** — every route's `diff_pct` is at or below `maxDiffPct`. Record one-line success per route in the feedback file. Skip the manual landmark comparison in step 3 below — it would be duplicate work.
+   - **`verdict: "fail"`** — at least one route exceeded `maxDiffPct`. For each failed route in `routes[]`:
+     - Treat it as **[High] severity, automatic**, regardless of `diff_pct`. A failing pixel-diff means the implementation does not visually match the prototype, which is exactly what Design Fidelity is meant to catch.
+     - Embed the `regions[]` coordinates verbatim in the feedback file — they tell the developer WHERE to look.
+     - Embed the diff overlay PNG path (`screenshots.diff`) — open it in your evidence list. The magenta areas are the parts that differ.
+     - Cross-reference `designs/coverage.md` if it exists: map the high-intensity regions to `<ComponentName>` entries by their position on the prototype (top-of-page = first regions in the file, etc.). Name the components in the carryover entry so the developer can locate them.
+     - The diff overlay is the evidence — no extra side-by-side screenshots needed.
+   - **`verdict: "skip"`** — the script noped out (deps missing, no `designs/`, server URLs missing, or `enabled: false`). The JSON has a `reason` field. Fall back to step 3 below (the manual landmark comparison), and note the skip reason in your feedback so the user knows pixel-diff didn't run.
+
+3. **Manual landmark comparison (fallback — only when step 2 returned `verdict: "skip"`):**
+   - `mcp__playwright__browser_navigate` to `<DESIGNS_URL>/<prototype>.html`.
+   - Take `mcp__playwright__browser_snapshot` against the prototype URL. Extract the set of top-level landmarks (any `role="region"`, `<section>`, `<aside>`, `<main>`, or top-level direct child of the page's main grid/flex container). Call this set `P`.
+   - Navigate to the corresponding route on the dev server, take `mcp__playwright__browser_snapshot`. Extract the same set of top-level landmarks. Call it `I`.
+   - Compute `missing = P - I` (regions present in the prototype but absent from the implementation). For each region in `missing`:
+     - **Severity is automatic [High]**, regardless of size or visual prominence. A "summary card" the implementer skipped is the same severity as a missing nav bar — both are top-level landmarks the prototype defined. Do not downgrade to [Med] because a region "looks small".
+     - Cross-reference `designs/coverage.md` if it exists. If the prototype's top-level region maps to a `<ComponentName>` in coverage.md, name the component in the feedback.
+     - Cite the missing region's text content (heading, label) so the developer can locate it in the prototype HTML.
+   - Take screenshots at desktop width for the prototype and the implementation, side by side. Required as evidence for any [High] severity issue.
 
 **Layout pattern — automatic [High] severity if wrong:**
 - Full page design → implementation must be full page (not modal/drawer)

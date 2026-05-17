@@ -86,6 +86,20 @@ Three integration points enforce the rules:
 
 Bypass per-run with `SPECSMITH_CONVENTIONS=0` in the environment. The script also no-ops gracefully when no `conventions.json` exists, so you can install specsmith without the flag and add conventions later by hand.
 
+#### The `pixelDiff` block (visual fidelity, opt-in dependency)
+
+`conventions.json` also ships with a `pixelDiff` block — a separate config (not a `rules[]` entry, because the check is browser-driven, not text-scanning). When enabled (default), the evaluator runs `node .claude/scripts/pixel-diff.mjs` during Step 2b: for each `designs/<slug>.html` prototype, both the prototype and the matching route on the dev server are opened in headless Chromium at the same viewport, diffed with `pixelmatch`, and the worst-offending pixel regions are reported back as `{x, y, w, h, intensity}` so the model gets *where* the implementation deviates, not just *how much*. The diff overlay PNG goes into `pipeline/feedback/` alongside the reference and actual screenshots.
+
+When pixel-diff fires, it **replaces** the evaluator's older manual landmark snapshot comparison — pixel-diff is a strict superset (catches missing regions *and* layout / colour / typography deviations the snapshot comparison can't see). When it's not available (deps missing, designs server not running, `enabled: false`), the evaluator falls back to the manual comparison so the design-fidelity check still runs.
+
+The runtime deps (`playwright`, `pixelmatch`, `pngjs`) are not bundled into specsmith — host projects that want pixel-diff install them themselves:
+
+```bash
+npm i -D playwright pixelmatch pngjs && npx playwright install chromium
+```
+
+The script skips gracefully with an install hint when any are missing, so leaving `pixelDiff.enabled: true` in projects that haven't installed the deps just no-ops — no error, no broken build. Tunable knobs in the `pixelDiff` block: `viewport`, `maxDiffPct` (default 2.0), `threshold` (pixelmatch's `0..1`, default 0.1), `gridSize` (cell size for region bucketing, default 50 px), `masks` (CSS selectors for volatile content — timestamps, animations — applied via Playwright's `screenshot({ mask })`), and `routes` (override the default `designs/<slug>.html` ↔ `/<slug>` pairing).
+
 ### Closing the loop between /design and /build
 
 The pipeline is `…/plan → /tasks → /design → /build`, and `/design` runs *after* `/tasks`. That order means the designer can introduce regions the plan didn't enumerate (e.g. a summary card the planner left out) and they'd silently disappear from `/build`'s scope unless `/tasks` knows about them.
@@ -95,7 +109,7 @@ specsmith closes this loop in three places:
 1. **`agents/designer.md`** writes `designs/coverage.md` listing every prototype's top-level regions with stable component names. This is the machine-readable bridge between the designer and `/tasks`.
 2. **`/design`** ends with a hand-off message telling you to re-run `/tasks` before `/build`. The recommended pipeline becomes: `/plan → /tasks → /design → /tasks → /build` (the second `/tasks` runs in *merge mode*, appending tasks for newly-introduced regions and preserving any `[x]` checkmarks from the first run).
 3. **`agents/developer.md` Step 4 gate 0b** requires the developer to enumerate every region from `designs/coverage.md` (or the matching `designs/<slug>.html`) and check each one off in the handoff before declaring the phase ready. Catches the missing-region failure mode at source — one targeted edit instead of a full evaluator → developer round-trip.
-4. **`agents/evaluator.md` Step 2b** does a mechanical region diff between the prototype's accessibility-tree snapshot and the implementation's. Any top-level landmark in the prototype that's missing from the implementation is automatic `[High]` severity — no editorial judgment about "section vs detail". This is the safety net if you skipped step 2 and went straight to `/build`.
+4. **`agents/evaluator.md` Step 2b** runs `pixel-diff.mjs` (see the `pixelDiff` block above) to diff the rendered prototype against the rendered implementation pixel-for-pixel at the same viewport, reporting the worst-offending regions as coordinates + intensity. A failed diff is automatic `[High]` severity — no editorial judgment about "section vs detail". If the diff script is unavailable (deps not installed, server not running) the evaluator falls back to a manual accessibility-tree landmark comparison so the safety net still triggers if you skipped step 2 and went straight to `/build`.
 5. **`/build`** explicitly forbids deferring design-fidelity issues as "scope creep". Plan-vs-design tension is resolved by updating the plan/tasks (re-run `/tasks`), never by ignoring the design.
 
 Together these turn "the designer added something the plan didn't list" from a silent miss into either a merged task (best case) or a phase-blocking [High] (worst case).

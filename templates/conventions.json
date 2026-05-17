@@ -54,5 +54,19 @@
       "maxLines": 300,
       "message": "Component file exceeds 300 lines. Files this large almost always mix concerns — view markup, state, data fetching, derivations, validation. Extract: data fetching to a hook (src/hooks/use<X>.ts), derivations to a selector (src/lib/<feature>/selectors.ts), validation to a schema file, sub-views to child components. The cap is a proxy for 'this component is doing too much' — the regex can't tell which kind of logic to extract; you decide. Tune `maxLines` in .claude/conventions.json if 300 is too tight or too loose for your project."
     }
-  ]
+  ],
+
+  "pixelDiff": {
+    "_doc": "Visual regression for design fidelity. Run by the evaluator agent via .claude/scripts/pixel-diff.mjs: for each designs/<slug>.html prototype, opens both the prototype and the matching route on the dev server in headless Chromium at the same viewport, diffs the screenshots with pixelmatch, and reports the worst-offending regions as coordinates + intensity. Replaces the evaluator's manual landmark snapshot comparison when it runs. Requires the host project to install playwright + pixelmatch + pngjs (the script skips gracefully if any are missing, and the evaluator falls back to the manual comparison). Disable by setting enabled: false.",
+    "enabled": true,
+    "viewport": "1280x800",
+    "maxDiffPct": 2.0,
+    "threshold": 0.1,
+    "gridSize": 50,
+    "topRegions": 10,
+    "masks": ["[data-volatile]", "time", ".timestamp"],
+    "waitFor": null,
+    "routes": null,
+    "_routesNote": "If null, the script pairs each designs/<slug>.html with route /<slug> (and index.html with /). Override with an array like [{\"design\": \"designs/dashboard.html\", \"route\": \"/dashboard\"}] when filename ≠ route, or when only a subset of prototypes are ready to diff."
+  }
 }
