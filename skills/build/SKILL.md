@@ -54,6 +54,15 @@ Update the per-phase detail at the start of each phase (append or rewrite the **
 
 Subagents will read this file before any other discovery. Do not list `specs/` or otherwise re-validate facts that already live here.
 
+### Orchestrator: keep state files in working memory, don't re-read between cycles
+
+You (the build orchestrator) read `pipeline/run-state.md` and `pipeline/environment-facts.md` ONCE at the start of the run, then hold their contents in working memory for the rest of the /build session. Re-reading them at the top of every phase / cycle is pure waste — they are short, you already have them, and the only deltas come from:
+
+- the per-phase "Phase in progress" block you write yourself (you know what you wrote)
+- environment-facts corrections the developer subagent may log in their commit message ("Corrected environment-facts.md: <what>") — if you see such a message in the subagent return, re-read `environment-facts.md` then; otherwise do not
+
+A previous /build run re-read `run-state.md` 10× and `environment-facts.md` 9× across one session (~72 KB of duplicate context). Stop after the first read; trust your context.
+
 ## Clean previous run artifacts (run once, before the first phase)
 
 `pipeline/feedback/` and `pipeline/traces/` are per-run scratch space. Stale phase feedback files, screenshots, and JSONL traces from earlier builds are noise once a new run starts — they confuse the orchestrator when it scans for already-completed work, and they bloat trace digests with content from prior features. Run the cleanup helper once, before the first phase:

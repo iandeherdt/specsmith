@@ -4,7 +4,7 @@
 // Run with: `node tests/guard-repeat-commands.test.mjs` or `npm test`.
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,14 +111,23 @@ function evt(ts, tool, extra = {}) {
   rmSync(cwd, { recursive: true, force: true });
 }
 
-// ── Case 6: SPECSMITH_GUARD=0 bypass ──
+// ── Case 6: SPECSMITH_GUARD_OVERRIDE is IGNORED in hook context ──
+// The old env-var bypass (SPECSMITH_GUARD=0) was renamed AND scoped to
+// non-hook contexts in v0.9.0 — agents kept using the bypass to dodge
+// blocks. Under a hook payload, the override is logged and ignored.
 {
   const cwd = makeCwd();
   writeTrace(cwd, 'abcd1234', [
     evt('2026-05-14T20:30:00.000Z', 'Bash', { input: { command: 'npm run typecheck' } }),
   ]);
-  const r = runHook(cwd, 'abcd1234', 'npm run typecheck', { SPECSMITH_GUARD: '0' });
-  assert(r.status === 0, 'SPECSMITH_GUARD=0 bypasses the guard');
+  const r = runHook(cwd, 'abcd1234', 'npm run typecheck', { SPECSMITH_GUARD_OVERRIDE: 'agent-trying-to-dodge' });
+  assert(r.status === 2, 'SPECSMITH_GUARD_OVERRIDE does NOT bypass when running as a hook');
+  // Old var name no longer honored at all.
+  const r2 = runHook(cwd, 'abcd1234', 'npm run typecheck', { SPECSMITH_GUARD: '0' });
+  assert(r2.status === 2, 'old SPECSMITH_GUARD=0 var is no longer recognised');
+  // Bypass attempt was logged.
+  const logPath = join(cwd, 'pipeline', 'traces', 'guard-bypass-attempts.log');
+  assert(existsSync(logPath), 'bypass attempt is logged to pipeline/traces/guard-bypass-attempts.log');
   rmSync(cwd, { recursive: true, force: true });
 }
 

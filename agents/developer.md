@@ -273,6 +273,15 @@ to any tracking files.
   changed it.
 - **Tailing full logs**: Use `tail -N` with a small N. Full log dumps pollute
   context for every subsequent turn.
+- **`head`/`tail` on generated, minified, or barrel-export files**: `head` and
+  `tail` are LINE-based, not byte-based. A barrel-export `.d.ts` (e.g.
+  `node_modules/lucide-react/dist/lucide-react.d.ts`) or a minified bundle
+  often packs thousands of exports onto a single 10K+ character line, so
+  `grep "Foo" big.d.ts | head -10` can return 30 KB+ of one mostly-irrelevant
+  line. When grepping such files, pipe through `cut -c1-200` to bound line
+  width: `grep "Foo" big.d.ts | head -10 | cut -c1-200`. Same gotcha for
+  webpack chunks, `tsc` error output with deep type expansion, and any
+  generated artifact.
 - **Re-running expensive commands to re-filter output**: If a command
   takes more than a few seconds (full test suite, repo-wide typecheck,
   build), tee its output to a file once and grep the file as many

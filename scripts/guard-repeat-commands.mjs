@@ -8,11 +8,15 @@
 // and writing a message to stderr. Claude Code surfaces stderr back to the
 // model as feedback, so the agent sees why the call was blocked.
 //
-// Bypass with `SPECSMITH_GUARD=0` in the environment.
+// Bypass: see README under "Runtime guard". Bypasses are restricted to
+// non-hook invocations (e.g. manual testing of this script) and any
+// attempt under a hook context is logged to pipeline/traces/.
 
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import { resolveTracePath, shortId } from './trace-path.mjs';
+
+const OVERRIDE_VAR = 'SPECSMITH_GUARD_OVERRIDE';
 
 const EXPENSIVE_RE = /\b(npm (run )?(test|lint|typecheck|build)|pnpm (run )?(test|lint|typecheck|build)|yarn (test|lint|typecheck|build)|tsc(\s|$)|jest(\s|$)|vitest(\s|$)|playwright test|next build|prisma migrate|cargo (test|build)|go test|mvn |gradle)\b/;
 const STATE_WIPE_RE = /\brm\s+-rf?\s+\S*(pglite|\.next|node_modules|data\/)/;
@@ -124,12 +128,38 @@ function deny(message) {
   process.exit(2);
 }
 
-function main() {
-  if (process.env.SPECSMITH_GUARD === '0') process.exit(0);
+function logBypassAttempt(cwd, payload, reason) {
+  try {
+    const dir = resolve(cwd, 'pipeline', 'traces');
+    mkdirSync(dir, { recursive: true });
+    const cmd = String(payload?.tool_input?.command || '').slice(0, 200).replace(/\s+/g, ' ');
+    const line = `${new Date().toISOString()}\t${OVERRIDE_VAR} set in hook context (IGNORED)\treason=${reason}\tcmd=${cmd}\n`;
+    writeFileSync(resolve(dir, 'guard-bypass-attempts.log'), line, { flag: 'a' });
+  } catch {}
+}
 
+function main() {
   const raw = readStdin();
-  if (!raw) process.exit(0);
+  if (!raw) {
+    // Manual invocation with no stdin payload — honor the override env var
+    // so this script remains testable from a shell. There is no agent here.
+    if (process.env[OVERRIDE_VAR]) process.exit(0);
+    process.exit(0);
+  }
   const payload = safeJsonParse(raw);
+  const isHook = !!(payload && payload.hook_event_name);
+
+  // Bypass: SPECSMITH_GUARD_OVERRIDE=<non-empty-reason>. Honored only when
+  // the script was NOT invoked as a hook (e.g. manual testing). Under a hook
+  // context — which is every Claude Code Bash tool call — the override is
+  // ignored and the attempt is logged. This closes the env-var bypass loop
+  // that earlier versions of the guard left open.
+  const override = process.env[OVERRIDE_VAR];
+  if (override && !isHook) process.exit(0);
+  if (override && isHook) {
+    logBypassAttempt(payload.cwd || process.cwd(), payload, override);
+  }
+
   if (!payload || payload.hook_event_name !== 'PreToolUse') process.exit(0);
   if (payload.tool_name !== 'Bash') process.exit(0);
 
@@ -162,7 +192,7 @@ function main() {
         `  - Wrapping the command in \`node -e "…"\`, \`bash -c "…"\`, \`sh -c "…"\`, etc.\n` +
         `  - Prefixing env vars (\`SKIP_ENV_VALIDATION=1\`, \`NODE_ENV=test\`, \`CI=1\`, …)\n` +
         `  - Varying --reporter / --bail / tee filenames / output redirection\n` +
-        `  - Setting \`SPECSMITH_GUARD=0\` — that escape hatch is for a human operator who knows the guard is wrong, not for you to dodge a block\n` +
+        `  - Setting any env var that claims to disable this guard — the guard ignores all such overrides in hook context and logs the attempt to \`pipeline/traces/guard-bypass-attempts.log\` for the user to see\n` +
         `\n` +
         `The guard is telling you to stop and diagnose, not to find a new way to run the same command.`
       );
@@ -180,8 +210,9 @@ function main() {
         `the last failing test output) and fix the root cause.\n` +
         `\n` +
         `Do NOT try to bypass by wrapping the rm in \`node -e\` / \`bash -c\`, by ` +
-        `targeting the same path with a different glob, or by setting ` +
-        `\`SPECSMITH_GUARD=0\` — the guard exists because repeated wipes have ` +
+        `targeting the same path with a different glob, or by setting an env var ` +
+        `that claims to disable this guard — bypass attempts in hook context are ` +
+        `logged and ignored. The guard exists because repeated wipes have ` +
         `historically masked the real bug.`
       );
     }

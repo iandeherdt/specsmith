@@ -129,7 +129,7 @@ Three rules in the evaluator make sure issues don't quietly carry forward across
 1. **Re-running an expensive command to re-filter output.** If `npm run test/lint/typecheck/build`, `playwright test`, `prisma migrate`, `tsc`, `jest`, `vitest`, `next build`, `cargo`, `go test`, `mvn`, or `gradle` already ran in this session and no `Edit` or `Write` tool call happened since, the second invocation is denied with a message pointing to `tee /tmp/last-out.txt` once, then grep the file. The "base" command is matched after stripping trailing `| grep/tail/head/awk/sed/wc/jq/...` pipes, so re-running with a different filter still counts as a repeat.
 2. **State-wipe loops.** Three or more `rm -rf` of the same path (matching `pglite`, `.next`, `node_modules`, `data/`) within 30 minutes is denied. If the same failure persists after wiping, the bug isn't stale state.
 
-Set `SPECSMITH_GUARD=0` in the environment to bypass both rules.
+**Bypassing the guard.** Set `SPECSMITH_GUARD_OVERRIDE=<reason>` (any non-empty value) in your shell BEFORE launching Claude Code if you want to disable both rules for a session. The override is honored only outside hook context (manual script invocation for testing); under a hook — which is every Claude Code Bash call — the override is **ignored** and the attempt is appended to `pipeline/traces/guard-bypass-attempts.log` for you to see. This closes the loophole earlier versions left open, where an agent could dodge the guard by exporting the env var in its bash session. To truly disable the guard for a session, remove the hook entry from `.claude/settings.json` instead of relying on the override var.
 
 ### Run the loops in an isolated environment
 
