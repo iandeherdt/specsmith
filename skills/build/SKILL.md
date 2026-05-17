@@ -88,6 +88,28 @@ The output is the phase heading plus every `- [ ]` / `- [x]` task line under it,
 
 **POSIX-awk gotcha for future modifications**: `\b` word boundaries are a GNU extension and are NOT in POSIX awk. If you ever need ID-based matching here (e.g. matching `T001` but not `T0010`), match the literal trailing space (`T001 `) rather than reaching for `\b`. Mis-matched IDs silently produce empty phase blocks, which then look like "no work to do" to the developer.
 
+### Step 0b — Slice large phases before dispatch
+
+Count unchecked `- [ ]` tasks in the phase block:
+
+```bash
+UNCHECKED=$(printf '%s\n' "$PHASE_BLOCK" | grep -c '^- \[ \]')
+```
+
+If `UNCHECKED > $SLICE_THRESHOLD` (default `8`), do NOT dispatch the whole phase as one developer call. Single subagents stall on large phases — they run out of attention partway through, the orchestrator pays for a half-completed run, and the work has to be redone in slices anyway (this is exactly what happened in Phase 2 of `006-property-compliance-and-finance`, where a 13-file dispatch had to be split into 3 retroactively).
+
+Instead, split the phase block into sequential developer dispatches:
+
+1. **Group tasks into natural sub-sections** of ~4–6 unchecked tasks each. Prefer boundaries that match the work — all migrations together, all new repository files together, all schema work together, all route handlers together. Don't split a task and its sibling check across slices.
+2. **Dispatch each slice as its own `developing-features` Agent call**, in order. Each call gets fresh context, so slice B's developer won't have slice A's working memory — that's fine, they'll see slice A's edits in `git diff HEAD` and on disk.
+3. **Wait for each slice to return** before dispatching the next. The Agent tool blocks until the subagent finishes, so serial dispatch is automatic — don't try to parallelise slices, they share files.
+4. **Pass the slice as the phase block** in the developer prompt, with a header line naming it (e.g. `### Slice A of 3: migrations`) so the developer knows it's a subset and won't panic about the missing tasks.
+5. **After the last slice returns, proceed to Step 1b → Step 2 as normal**. The evaluator runs ONCE at the end against the **full** phase block, not per slice — slicing is a developer-side mitigation, the phase still has to pass as a whole.
+
+If a slice fails (developer reports a blocker), stop and report; do not push on to the next slice. The phase-level retry loop (cycles 1..N) will pick the whole phase up again, and the orchestrator can re-slice differently next cycle if needed.
+
+Skip this step when `UNCHECKED <= $SLICE_THRESHOLD`. The threshold is tunable per-project by setting `$SLICE_THRESHOLD` before invoking `/build`.
+
 ### Step 1 — Developer
 
 Call the Agent tool with `subagent_type: "developing-features"` and `model: "sonnet"`. The prompt MUST include:

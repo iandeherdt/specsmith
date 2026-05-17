@@ -28,7 +28,11 @@
 
 ### III. Code Quality & Complexity Control
 
-- No file MUST exceed 500 lines of code.
+- No file MUST exceed 500 lines of code. Exemption: data and
+  configuration files (database schemas, i18n message catalogues,
+  generated types, lockfiles) are not subject to this ceiling — the
+  rule targets cognitive load in hand-written logic, and these files
+  are read by line rather than understood as a whole.
 - Functions MUST remain short and focused. Use SonarQube cognitive
   complexity rules as the measure — high nesting depth, long
   parameter lists, and deep indentation are violations.

@@ -27,12 +27,36 @@ function safeJsonParse(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
-// Strip everything from the first ` | (grep|tail|head|...)` onward, plus
-// any trailing `; echo …` / `&& echo …` epilogue agents tend to add.
-// What's left is the "base" — the part that actually does the work.
+// If the command is wrapped in `node -e "..."` / `bash -c "..."` / `sh -c "..."`,
+// pull the inner code out. Agents reach for these wrappers when the guard
+// blocks the direct form, so we collapse the wrapped variant to the same
+// base as the unwrapped one.
+function unwrapShell(cmd) {
+  const nodeE = cmd.match(/^\s*node(?:\s+--[^\s]+)*\s+-e\s+(["'])([\s\S]+)\1\s*$/);
+  if (nodeE) {
+    const inner = nodeE[2];
+    // node -e wrappers typically call execSync('shell command here', ...) —
+    // pull out that first string argument so we can compare it to a prior
+    // direct shell invocation.
+    const exec = inner.match(/(?:exec|spawn)Sync\s*\(\s*(["'`])([\s\S]+?)\1/);
+    if (exec) return exec[2];
+    return inner;
+  }
+  const shellC = cmd.match(/^\s*(?:bash|sh|zsh)\s+-c\s+(["'])([\s\S]+)\1\s*$/);
+  if (shellC) return shellC[2];
+  return cmd;
+}
+
+// Strip everything from the first ` | (grep|tail|head|...)` onward, any
+// trailing `; echo …` / `&& echo …` epilogue, and any leading env-var
+// prefix (`SKIP_ENV=1 NODE_ENV=test <cmd>`). What's left is the "base" —
+// the part that actually does the work. Wrapped forms (`node -e "..."`,
+// `bash -c "..."`) are unwrapped first.
 function baseCommand(cmd) {
   if (typeof cmd !== 'string') return '';
-  let b = cmd.replace(/\s*\|\s*(grep|rg|awk|sed|head|tail|wc|jq|tee|cut|sort|uniq|less|more)\b.*$/, '');
+  let b = unwrapShell(cmd);
+  b = b.replace(/^(?:\s*[A-Z_][A-Z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)+/, '');
+  b = b.replace(/\s*\|\s*(grep|rg|awk|sed|head|tail|wc|jq|tee|cut|sort|uniq|less|more)\b.*$/, '');
   b = b.replace(/\s*(;|&&)\s*echo\b.*$/, '');
   return b.trim();
 }
@@ -125,12 +149,22 @@ function main() {
     if (lastBaseAt && editsBetween === 0) {
       const ageS = Math.max(0, Math.round((Date.now() - Date.parse(lastBaseAt)) / 1000));
       deny(
-        `Refusing to re-run \`${base}\` — it ran ${ageS}s ago and no Edit/Write tool ` +
-        `calls have happened since, so the output will be identical. Tee the output ` +
-        `once and grep the file:\n` +
-        `  ${base} 2>&1 | tee /tmp/last-out.txt\n` +
-        `  grep -n "<pattern>" /tmp/last-out.txt\n` +
-        `Set SPECSMITH_GUARD=0 to bypass.`
+        `Refusing to re-run \`${base}\` — it ran ${ageS}s ago and no Edit/Write ` +
+        `tool calls have happened since, so the output will be identical. ` +
+        `You are looping.\n` +
+        `\n` +
+        `Do this instead:\n` +
+        `  1. Open the output you already have (your scrollback, or the tee file from the prior run — try \`ls /tmp/*-out.txt\`).\n` +
+        `  2. Pick ONE failure. Read it carefully.\n` +
+        `  3. Edit code to fix it. Once an Edit/Write happens, the guard allows a re-run.\n` +
+        `\n` +
+        `Do NOT try to bypass this block — every variant below is detected and will also be refused:\n` +
+        `  - Wrapping the command in \`node -e "…"\`, \`bash -c "…"\`, \`sh -c "…"\`, etc.\n` +
+        `  - Prefixing env vars (\`SKIP_ENV_VALIDATION=1\`, \`NODE_ENV=test\`, \`CI=1\`, …)\n` +
+        `  - Varying --reporter / --bail / tee filenames / output redirection\n` +
+        `  - Setting \`SPECSMITH_GUARD=0\` — that escape hatch is for a human operator who knows the guard is wrong, not for you to dodge a block\n` +
+        `\n` +
+        `The guard is telling you to stop and diagnose, not to find a new way to run the same command.`
       );
     }
   }
@@ -142,9 +176,13 @@ function main() {
       deny(
         `Refusing this state wipe — the same path has been removed ${prior} time(s) ` +
         `in the last 30 minutes. If the same failure keeps coming back after a wipe, ` +
-        `the bug isn't stale state. Read the underlying error (look for recurring ` +
-        `runtime errors in the dev-server log) and fix the root cause. ` +
-        `Set SPECSMITH_GUARD=0 to bypass.`
+        `the bug isn't stale state. Read the underlying error (the dev-server log, ` +
+        `the last failing test output) and fix the root cause.\n` +
+        `\n` +
+        `Do NOT try to bypass by wrapping the rm in \`node -e\` / \`bash -c\`, by ` +
+        `targeting the same path with a different glob, or by setting ` +
+        `\`SPECSMITH_GUARD=0\` — the guard exists because repeated wipes have ` +
+        `historically masked the real bug.`
       );
     }
   }
