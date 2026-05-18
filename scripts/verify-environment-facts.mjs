@@ -374,6 +374,13 @@ const TEST_FILE_RE = /\.(?:test|spec)\.[a-z]+$/i;
 const GENERATED_RE =
   /(?:^|\/)(?:node_modules|\.next|\.nuxt|\.svelte-kit|dist|build|out|coverage|\.turbo|\.vercel|vendor|\.git)\//;
 const GENERATED_FILE_RE = /(?:\.generated\.|\.gen\.|\.d\.ts$)/i;
+// Vendored tooling: paths managed by specsmith (`init` / `update`), not by
+// feature work. They live in the host repo for convenience but are not the
+// project's code — they are read as documentation. Skipping them here is
+// the logical extension of Constitution Principle VIII (Scope Discipline):
+// if you can't edit these files as part of a feature build, your project's
+// quality gates also don't apply to them.
+const VENDORED_TOOLING_RE = /^\.claude\/(scripts|agents|skills|specsmith)\//;
 
 function gitChangedFiles() {
   const files = new Set();
@@ -419,6 +426,7 @@ function checkFileSizes() {
     if (TEST_FILE_RE.test(f)) return false;
     if (GENERATED_RE.test(f)) return false;
     if (GENERATED_FILE_RE.test(f)) return false;
+    if (VENDORED_TOOLING_RE.test(f)) return false;
     return true;
   });
 

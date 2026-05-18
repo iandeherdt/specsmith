@@ -28,11 +28,18 @@
 
 ### III. Code Quality & Complexity Control
 
-- No file MUST exceed 500 lines of code. Exemption: data and
-  configuration files (database schemas, i18n message catalogues,
-  generated types, lockfiles) are not subject to this ceiling — the
-  rule targets cognitive load in hand-written logic, and these files
-  are read by line rather than understood as a whole.
+- No file MUST exceed 500 lines of code. Exemptions:
+  1. Data and configuration files (database schemas, i18n message
+     catalogues, generated types, lockfiles) — read by line rather
+     than understood as a whole.
+  2. Vendored tooling installed by package managers — `.claude/scripts/`,
+     `.claude/agents/`, `.claude/skills/`, `.claude/specsmith/`, and
+     `node_modules/`. These files live in the repo but are not the
+     project's code; they are read as documentation, and they are
+     managed by the tool that installed them (see Principle VIII).
+     A specsmith-shipped helper exceeding 500 lines is specsmith's
+     concern to refactor, not this project's.
+  The rule targets cognitive load in hand-written project logic.
 - Functions MUST remain short and focused. Use SonarQube cognitive
   complexity rules as the measure — high nesting depth, long
   parameter lists, and deep indentation are violations.
