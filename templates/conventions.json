@@ -65,6 +65,7 @@
     "_routesNote": "Same shape as pixelDiff.routes. When null, dom-diff falls back to pixelDiff.routes (since v0.19.1) so you don't have to duplicate the mapping — the two tools target the same prototype pairs. If neither is set, the script pairs each designs/<slug>.html with /<slug>; that fallback breaks when filenames don't match nested route paths (e.g. `settings-sharepoint.html` vs `/settings/sharepoint`), so prefer letting pixelDiff.routes drive both.",
     "routeOverrides": null,
     "storageStatePath": null,
+    "_storageStatePathNote": "Path to a Playwright storageState JSON (cookies + localStorage), applied to dom-diff's actual-side navigation only (never to the reference side — designs/*.html doesn't need auth). When null (the default since v0.20.1), falls back to pixelDiff.storageStatePath — the two tools target the same routes at the same dev server, so making the user duplicate the path is footgun-prone (without auth, every protected route redirects to /login and dom-diff compares the login page against the prototype, failing every route). Explicitly set this only when dom-diff needs a different session than pixel-diff (rare).",
     "maxDifferences": 0,
     "_maxDifferencesNote": "How many normalised differences a route can have before its verdict flips to fail. Default 0 — every difference is significant once names/numbers/dates are stripped out. Raise per-route via routeOverrides when one route is genuinely allowed to drift from its prototype (rare; almost always a sign the prototype should be updated instead)."
   },

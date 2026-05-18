@@ -23,7 +23,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
-import { compareSnapshots, normaliseText, resolveRoutes } from './dom-diff-lib.mjs';
+import { compareSnapshots, normaliseText, resolveRoutes, resolveStorageState } from './dom-diff-lib.mjs';
 
 const CWD = process.cwd();
 const CONVENTIONS_PATH = join(CWD, '.claude', 'conventions.json');
@@ -75,15 +75,30 @@ function loadConfig() {
   let parsed;
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed.domDiff !== 'object' || parsed.domDiff === null) return null;
-  // Stash pixelDiff.routes so we can fall back to it when domDiff.routes
-  // is null. The two tools target the same prototype pairs; making the
-  // user duplicate the array is footgun-prone.
+  // Mirror two pixelDiff fields when domDiff doesn't set them. Both tools
+  // target the same prototype pairs at the same dev server — making the
+  // user duplicate `routes` and `storageStatePath` is footgun-prone:
+  //   - `routes`           — wrong slug→/<slug> fallback → 404s + hangs
+  //                          (the v0.19.1 fix)
+  //   - `storageStatePath` — no auth → every protected route redirects to
+  //                          /login → dom-diff compares the login page
+  //                          against the prototype → every route fails
+  //                          (the v0.20.1 fix).
+  // domDiff still wins when it explicitly sets the field; only `null`
+  // triggers the fallback.
+  const dom = parsed.domDiff;
+  const storage = resolveStorageState({
+    domStorage: dom.storageStatePath,
+    pixelStorage: parsed.pixelDiff?.storageStatePath,
+  });
   return {
     ...DEFAULTS,
-    ...parsed.domDiff,
+    ...dom,
     _pixelDiffRoutes: parsed.pixelDiff && Array.isArray(parsed.pixelDiff.routes)
       ? parsed.pixelDiff.routes
       : null,
+    storageStatePath: storage.path,
+    _storageStateSource: storage.source,
   };
 }
 
@@ -254,7 +269,10 @@ async function main() {
     emit({ verdict: 'skip', reason: 'no designs/ directory in repo' }, 0);
   }
 
-  if (args.storageStatePath) cfg.storageStatePath = args.storageStatePath;
+  if (args.storageStatePath) {
+    cfg.storageStatePath = args.storageStatePath;
+    cfg._storageStateSource = 'cli';
+  }
   if (cfg.storageStatePath && !existsSync(cfg.storageStatePath)) {
     emit({
       verdict: 'skip',
@@ -349,6 +367,7 @@ async function main() {
     verdict,
     summary: `${results.length - failed.length}/${results.length} routes passed structural diff (${totalDiffs} total differences after normalisation)`,
     routes_source: resolved.source,
+    storage_state_source: cfg._storageStateSource ?? 'none',
     ...(scoped ? { scoped: true, scoped_routes: args.onlyRoutes } : {}),
     routes: results,
   };

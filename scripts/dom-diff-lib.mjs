@@ -85,6 +85,25 @@ export function diffOrderedLists(before, after) {
 //     landmarkNames: ['sidebar', 'main', ...],
 //   }
 // Text inside lists is already normalised by the extractor.
+// Resolve which storageState (Playwright cookies + localStorage JSON
+// path) dom-diff should use. domDiff's own value wins when explicitly
+// set (string or null-distinct); only undefined / null triggers the
+// fall-back to pixelDiff.storageStatePath. Why fall back at all: both
+// tools navigate the same auth-protected routes on the same dev server,
+// so making the user duplicate the path is footgun-prone — null on
+// domDiff means every protected route gets bounced to /login and the
+// dom-diff compares the login page against the prototype, failing
+// every route in the same way.
+export function resolveStorageState({ domStorage, pixelStorage }) {
+  if (typeof domStorage === 'string' && domStorage.length > 0) {
+    return { source: 'domDiff', path: domStorage };
+  }
+  if (typeof pixelStorage === 'string' && pixelStorage.length > 0) {
+    return { source: 'pixelDiff (fallback)', path: pixelStorage };
+  }
+  return { source: 'none', path: null };
+}
+
 // Resolve which (design, route) pairs dom-diff should compare. Priority:
 //   1. an explicit CLI override (rare; mostly for tests)
 //   2. domDiff.routes — when the user has hand-tuned dom-diff's own route list

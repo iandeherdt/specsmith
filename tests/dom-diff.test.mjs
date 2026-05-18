@@ -3,7 +3,7 @@
 // Playwright installed); the regex set + snapshot diff are pure.
 
 import assert from 'node:assert';
-import { normaliseText, compareSnapshots, diffOrderedLists, resolveRoutes } from '../scripts/dom-diff-lib.mjs';
+import { normaliseText, compareSnapshots, diffOrderedLists, resolveRoutes, resolveStorageState } from '../scripts/dom-diff-lib.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -252,6 +252,42 @@ test('resolveRoutes: discovered returns empty when discoveredFn returns empty', 
   });
   assert.strictEqual(r.source, 'discovered');
   assert.deepStrictEqual(r.routes, []);
+});
+
+// ─── resolveStorageState ──────────────────────────────────────────────
+
+test('resolveStorageState: domDiff explicit wins', () => {
+  const r = resolveStorageState({ domStorage: 'a.json', pixelStorage: 'b.json' });
+  assert.strictEqual(r.source, 'domDiff');
+  assert.strictEqual(r.path, 'a.json');
+});
+
+test('resolveStorageState: falls back to pixelDiff when dom is null', () => {
+  const r = resolveStorageState({ domStorage: null, pixelStorage: 'pipeline/auth.json' });
+  assert.strictEqual(r.source, 'pixelDiff (fallback)');
+  assert.strictEqual(r.path, 'pipeline/auth.json');
+});
+
+test('resolveStorageState: falls back to pixelDiff when dom is undefined', () => {
+  const r = resolveStorageState({ domStorage: undefined, pixelStorage: 'pipeline/auth.json' });
+  assert.strictEqual(r.source, 'pixelDiff (fallback)');
+  assert.strictEqual(r.path, 'pipeline/auth.json');
+});
+
+test('resolveStorageState: empty string treated like null (falls back)', () => {
+  const r = resolveStorageState({ domStorage: '', pixelStorage: 'pipeline/auth.json' });
+  assert.strictEqual(r.source, 'pixelDiff (fallback)');
+});
+
+test('resolveStorageState: both null → none', () => {
+  const r = resolveStorageState({ domStorage: null, pixelStorage: null });
+  assert.strictEqual(r.source, 'none');
+  assert.strictEqual(r.path, null);
+});
+
+test('resolveStorageState: pixel non-string is treated as none', () => {
+  const r = resolveStorageState({ domStorage: null, pixelStorage: 42 });
+  assert.strictEqual(r.source, 'none');
 });
 
 console.log(`\n${passed} passed, ${failed} failed.`);
