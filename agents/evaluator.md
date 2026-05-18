@@ -383,11 +383,14 @@ If `designs/coverage.md` exists (written by the designing-interfaces agent), use
      - The diff overlay is the evidence when you need it — no extra side-by-side screenshots needed.
    - **`verdict: "skip"`** — the script noped out (deps missing, no `designs/`, server URLs missing, or `enabled: false`). The JSON has a `reason` field. Fall back to step 3 below (the manual landmark comparison), and note the skip reason in your feedback so the user knows pixel-diff didn't run.
 
-   **Plateau detection (`stuck: true`):** If the JSON payload includes `"stuck": true` (set by the script when every compared route's `diff_pct` moved less than 0.5pp from the prior run), the diff has converged to its current floor. Do NOT loop the developer for another micro-edit cycle — that's exactly the failure mode the flag exists to break. Instead, in your feedback file:
-   - Copy the `stuck_reason` string verbatim under a `## Pixel-diff plateau` heading.
-   - Tell the user (in `## Issues Found`) that the diff has stabilised and list the floors (`/dashboard: 6.5%`, `/login: 3.6%`, …).
-   - Recommend one of the three options the `stuck_reason` lists: raise `pixelDiff.maxDiffPct`, add masks, or accept the baseline.
-   - This is a **user decision**, not an automatic [High] severity. Mark the phase carryovers `_None — pixel-diff stuck, waiting on threshold/mask decision._` so the build orchestrator doesn't trigger another cycle.
+   **Plateau detection (`stuck: true`):** If the JSON payload includes `"stuck": true` (set by the script when every compared route's `diff_pct` moved less than 0.5pp from the prior run), the diff has converged to its current floor. The developer cannot fix this with another micro-edit cycle; the call is now user-side.
+
+   When `stuck: true`:
+   - **`stuck: true` overrides the auto-[High] verdict from the failed-route bullet above.** A plateaued diff is not a developer-actionable defect, so do NOT add per-route [High] entries to Issues Found. The auto-[High] rule applies to failed routes where micro-edits could still move the needle; once stuck, the rule is short-circuited.
+   - In your feedback file, write a `## Pixel-diff plateau` heading with the `stuck_reason` string verbatim, then list the per-route floors (`/dashboard: 6.5%`, `/login: 3.6%`, …) under `## Issues Found` as plain observations (no severity tag).
+   - **Emit `<promise>BLOCKED</promise><reason>...</reason>`** instead of any pass/fail signal. The `<reason>` body is a 1-2 sentence summary of what the user needs to decide — e.g. `Pixel-diff has stabilised at 6.5% on /dashboard and 3.6% on /login (maxDiffPct=2.0). User decision needed: raise maxDiffPct, add masks for the irreducible regions, or accept the floors as baseline. See pipeline/feedback/<this-file> for the full plateau details.`
+   - **Carryovers list**: `_None — build BLOCKED on user decision._` Carryovers are for the next developer cycle, and there is no next cycle when the phase is blocked.
+   - Do NOT also output `COMPLETE` or `PERFECT`. `BLOCKED` is mutually exclusive with the pass signals.
 
 3. **Manual landmark comparison (fallback — only when step 2 returned `verdict: "skip"`):**
    - `mcp__playwright__browser_navigate` to `<DESIGNS_URL>/<prototype>.html`.
@@ -550,11 +553,14 @@ The Carryovers list is the **operational** contract with the next cycle's develo
 **Auto-promote prior [Med] when scope grows.** If a previous cycle's feedback flagged a [Med] issue about a cross-cutting concern (provider, layout shell, i18n setup, error boundary, auth context, etc.) and the current phase added new code that depends on it, escalate that prior [Med] to [High] for this cycle. The heuristic that triggers promotion: prior [Med] mentioned a symbol/file (e.g. `NextIntlClientProvider`, `RootLayout`) AND the current phase added ≥1 new consumer of it (new `useTranslations()` call site, new client component nested under that provider, etc.). Record it as a fresh [High] in Issues Found AND in Carryovers, citing both the original cycle and the new consumers — "Phase 1 cycle 1 flagged X as [Med] (login-only); Phase 4 added 5 new consumers (file:line, file:line, …) — promoted to [High]".
 
 Signal rules:
-- **Score = 10/10 AND all acceptance criteria `[x]` AND zero High issues AND zero unresolved carry-overs AND every relevant FR-### satisfied** → output `<promise>PERFECT</promise>` — stops the loop
-- **Score ≥ threshold AND all phase tasks `[x]` AND zero High issues AND zero unresolved carry-overs AND every relevant FR-### satisfied** → output `<promise>COMPLETE</promise>` — loop continues
-- **Any High issues OR unresolved carry-overs OR unmet FR-### OR score < threshold** → do not signal — write prioritised feedback
+- **Score = 10/10 AND all acceptance criteria `[x]` AND zero High issues AND zero unresolved carry-overs AND every relevant FR-### satisfied** → output `<promise>PERFECT</promise>` — stops the loop, feature done
+- **Score ≥ threshold AND all phase tasks `[x]` AND zero High issues AND zero unresolved carry-overs AND every relevant FR-### satisfied** → output `<promise>COMPLETE</promise>` — loop continues to next phase
+- **A check has reached a state only the user can resolve** (e.g. pixel-diff plateau with `stuck: true`, constitution waiver required, FR-### that can't be satisfied without a product decision) → output `<promise>BLOCKED</promise><reason>...</reason>` — the build orchestrator halts the loop entirely and surfaces `<reason>` to the user. Do NOT also output a pass signal in the same evaluation. `BLOCKED` is mutually exclusive with `COMPLETE` / `PERFECT`.
+- **Any other failure** (High issues, unresolved carry-overs, unmet FR-###, score < threshold, AND no BLOCKED state present) → do not signal — write prioritised feedback, the orchestrator triggers a retry cycle
 
 **Critical**: `PERFECT` means the **entire feature** is done — every phase passes. Do NOT output `PERFECT` just because one phase scored 10/10.
+
+**On `BLOCKED`**: this signal is reserved for states a developer cycle cannot fix. Do not reach for it when the failure is "developer wrote bad code" — that's the no-signal/retry path. `BLOCKED` exists for the narrow set of states where the next move is the user's: choose a threshold, choose to defer a feature, sign off on a waiver, answer an `OQ-###`. The `<reason>` body must name what specifically needs deciding (one or two sentences max). The orchestrator prints it verbatim — write it for the user, not for yourself.
 
 ---
 
@@ -566,7 +572,7 @@ For each task you verified, flip its checkbox in `<spec-branch>/tasks.md` from `
 
 Mark BOTH the implementation task AND its sibling check task as `[x]` only after browser-verifying the check.
 
-If the phase **fails**, do NOT modify `tasks.md`.
+If the phase **fails** OR is **BLOCKED**, do NOT modify `tasks.md`. A BLOCKED phase is paused, not done — flipping checkboxes there would lie about progress to the next /build run.
 
 ---
 

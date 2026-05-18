@@ -187,12 +187,25 @@ Do NOT add ToolSearch commands, browser rules, scoring rubrics, or verification 
 ### Step 3 — Check results
 
 Read the evaluator's feedback file and output:
-- Check for `<promise>COMPLETE</promise>` or `<promise>PERFECT</promise>` signals
-- **Also read the feedback file** — do NOT just check the signal:
-  - If there are any **[High]** severity issues, the phase does NOT pass regardless of score. Loop back to Step 1.
-  - If **Unresolved Issues** from a prior cycle are still listed, the phase does NOT pass. Loop back to Step 1.
-- PASS (signal present, no High issues, no unresolved carry-overs) → log success, move to next phase
-- FAIL → log failure with specific issues, loop back to Step 1
+
+1. **Check for `<promise>BLOCKED</promise>` FIRST.** If present, extract the `<reason>...</reason>` body. Halt the entire build loop — do NOT invoke the next phase, do NOT retry, do NOT mark the current phase complete. Append a BLOCKED entry to `pipeline/build-log.md` (see Logging below) and print to the user:
+   ```
+   Build halted at Phase [N] Cycle [C] — BLOCKED.
+
+   Reason: <reason body verbatim>
+
+   The build cannot proceed without your input. See pipeline/feedback/phase-[N]-cycle-[C].md for full context, then re-invoke /build after the decision is made (e.g. tune `pixelDiff.maxDiffPct`, defer a route in `pixelDiff.routes`, update `prd.md` with an FR-###, etc.).
+   ```
+   Then exit /build cleanly. The user is in the driver's seat.
+
+2. **Otherwise check for `<promise>COMPLETE</promise>` or `<promise>PERFECT</promise>` signals.**
+3. **Also read the feedback file** — do NOT just check the signal:
+   - If there are any **[High]** severity issues, the phase does NOT pass regardless of score. Loop back to Step 1.
+   - If **Unresolved Issues** from a prior cycle are still listed, the phase does NOT pass. Loop back to Step 1.
+4. PASS (signal present, no High issues, no unresolved carry-overs) → log success, move to next phase.
+5. FAIL → log failure with specific issues, loop back to Step 1.
+
+`BLOCKED` is checked first because it is mutually exclusive with all other outcomes — an evaluator that emits both `BLOCKED` and `COMPLETE` is malformed, and the BLOCKED state should win to keep the human in the loop.
 
 ## Logging
 
@@ -202,16 +215,17 @@ Append to `pipeline/build-log.md`:
 Phase [N] — Cycle [C] — [Timestamp]
 
 Developer: completed
-Evaluator: PASS/FAIL — Score X.X/10
+Evaluator: PASS/FAIL/BLOCKED — Score X.X/10
 High issues: [list any High severity items, or "none"]
 Unresolved from prior: [list any, or "none"]
-Verdict: [PASS — moving to next phase / FAIL — retrying with feedback]
+Verdict: [PASS — moving to next phase / FAIL — retrying with feedback / BLOCKED — <reason> — build halted, awaiting user]
 ```
 
 ## Failure handling
 
 - After max cycles, write unresolved issues to `pipeline/build-log.md`
 - Report to the user what's blocking and which issues could not be resolved
+- **`BLOCKED` is not a failure** — it is a deliberate halt for a user decision (see Step 3). Do NOT count a BLOCKED cycle toward `$MAX_CYCLES`, and do NOT re-dispatch the developer on the same phase after a BLOCKED. The /build skill exits; the user re-runs /build after the decision is made.
 
 ## Rules
 

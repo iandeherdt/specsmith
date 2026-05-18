@@ -100,7 +100,20 @@ npm i -D playwright pixelmatch pngjs && npx playwright install chromium
 
 The script skips gracefully with an install hint when any are missing, so leaving `pixelDiff.enabled: true` in projects that haven't installed the deps just no-ops — no error, no broken build. Tunable knobs in the `pixelDiff` block: `viewport`, `maxDiffPct` (default 5.0 since v0.10.0 — raised from 2.0 because real Next.js/Remix apps have ~3-6% irreducible drift vs static-HTML prototypes from font hinting, computed greetings, freshness timestamps, and live data), `threshold` (pixelmatch's `0..1`, default 0.1), `gridSize` (cell size for region bucketing, default 50 px), `masks` (CSS selectors for volatile content — timestamps, animations — applied via Playwright's `screenshot({ mask })`), and `routes` (override the default `designs/<slug>.html` ↔ `/<slug>` pairing).
 
-The script also writes a `pixel-diff.json` file in the output directory and reads it on the next invocation to detect a plateaued diff. If every route's `diff_pct` moved less than 0.5pp from the prior run, the output payload includes `"stuck": true` plus a `stuck_reason` string suggesting three remediations (raise `maxDiffPct`, add masks, or accept the baseline). The evaluator agent reads this flag and pauses the build loop rather than asking the developer for another micro-edit cycle — the failure mode the flag exists to break is "agent burns N cycles trying to push 6.5% diff under a 2% threshold by tweaking seed data".
+The script also writes a `pixel-diff.json` file in the output directory and reads it on the next invocation to detect a plateaued diff. If every route's `diff_pct` moved less than 0.5pp from the prior run, the output payload includes `"stuck": true` plus a `stuck_reason` string suggesting three remediations (raise `maxDiffPct`, add masks, or accept the baseline). The evaluator emits `<promise>BLOCKED</promise>` on a plateau (see "Build signals" below) and the build orchestrator halts cleanly rather than asking the developer for another micro-edit cycle — the failure mode the flag exists to break is "agent burns N cycles trying to push 6.5% diff under a 2% threshold by tweaking seed data".
+
+### Build signals
+
+The evaluator communicates with the build orchestrator through one of four states:
+
+| Signal | Meaning | Orchestrator action |
+| --- | --- | --- |
+| `<promise>PERFECT</promise>` | Entire feature done — every phase passes, all FRs satisfied, score 10/10 | Stop /build; feature complete |
+| `<promise>COMPLETE</promise>` | This phase passes (score ≥ threshold, no High, no carryovers, all FRs for this phase met) | Move to next phase |
+| `<promise>BLOCKED</promise><reason>...</reason>` (v0.12.0+) | A user decision is required — pixel-diff plateau, constitution waiver, unresolvable FR, etc. The reason names what specifically needs deciding | Halt /build, print `<reason>` to the user, exit cleanly. Re-run /build after the human resolves the question |
+| no signal | Failure the developer can fix — High issues, unresolved carryovers, unmet FR-###, score below threshold | Loop back to the developer with feedback, up to `$MAX_CYCLES` |
+
+`BLOCKED` is mutually exclusive with the pass signals. It exists so the orchestrator doesn't have to choose between "fake-pass a phase with a known gap" or "loop forever on something the developer can't fix" — the third path is "stop and ask the human". Common triggers: pixel-diff `stuck: true`, a `OQ-###` in `prd.md` the implementation can't resolve, a constitution principle that needs an explicit waiver decision.
 
 #### Auth-protected routes (`storageStatePath`)
 
