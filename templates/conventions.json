@@ -70,6 +70,8 @@
     "routes": null,
     "storageStatePath": null,
     "_storageStateNote": "Path to a Playwright storageState JSON (cookies + localStorage), applied ONLY to the actual-side screenshot — never to the reference (designs/*.html doesn't need auth). Use when routes are auth-protected: a project-local wrapper script logs in once, writes the storageState to a known path (e.g. pipeline/storage-state.json), and either sets this field or passes `--storage-state <path>` at the CLI (CLI wins). If the path is set but the file doesn't exist when pixel-diff runs, the script skips with a clear reason instead of silently screenshotting the login page.",
+    "routeOverrides": null,
+    "_routeOverridesNote": "Per-route threshold overrides. Use when ONE route has irreducible drift the others don't — a dense detail page with spread micro-drift, a chart-heavy dashboard, etc. — and you don't want to loosen the global maxDiffPct for every route to accommodate it. Shape: { \"/contracts/[id]/indexation\": { \"maxDiffPct\": 11.0 } }. Match by exact route key as it appears in `routes` (or the default `/<slug>` for `designs/<slug>.html`). Routes with overrides are flagged with `max_diff_pct_source: \"routeOverride\"` in the output JSON so the evaluator surfaces them explicitly. Keep this list small — every override is a noise-floor that has to be remembered when reading future diffs.",
     "_routesNote": "If null, the script pairs each designs/<slug>.html with route /<slug> (and index.html with /). Override with an array like [{\"design\": \"designs/dashboard.html\", \"route\": \"/dashboard\"}] when filename ≠ route, or when only a subset of prototypes are ready to diff."
   }
 }

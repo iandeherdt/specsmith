@@ -51,6 +51,15 @@ const DEFAULTS = {
   // sets this field or passes --storage-state at the CLI (which wins).
   // The reference side (designs/*.html) is always loaded without auth.
   storageStatePath: null,
+  // Per-route threshold overrides. When one route's structure makes the
+  // global maxDiffPct unrealistic (e.g. a dense detail page with spread
+  // micro-drift) but the rest converge cleanly, give it its own floor here
+  // instead of loosening the global threshold for every route. Shape:
+  //   { "/contracts/[id]/indexation": { maxDiffPct: 11.0 } }
+  // Match by exact route key (as it appears in `routes`, or the discovered
+  // default `/<slug>` for `designs/<slug>.html`). Missing/null is identical
+  // to "no overrides defined".
+  routeOverrides: null,
 };
 
 // If the same per-route diff_pct moves less than this many percentage points
@@ -156,6 +165,17 @@ function loadPriorRun(outDir) {
   const path = join(outDir, 'pixel-diff.json');
   if (!existsSync(path)) return null;
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+// Pure function — exported for unit tests. Resolves the per-route maxDiffPct,
+// falling back to the global cfg.maxDiffPct when no override is defined.
+// Lets a project tighten the global threshold for the routes that converge
+// cleanly while accepting a higher floor on one or two structurally noisy
+// pages — instead of loosening the global for everyone.
+export function effectiveMaxDiffPct(cfg, routeKey) {
+  const ov = cfg?.routeOverrides?.[routeKey];
+  if (ov && typeof ov.maxDiffPct === 'number') return ov.maxDiffPct;
+  return cfg?.maxDiffPct;
 }
 
 // Pure function — exported for unit tests. Walks a pixelmatch-style
@@ -300,14 +320,17 @@ async function diffPair(deps, pair, cfg, viewport, outDir, browser) {
   writeFileSync(paths.diff, PNG.sync.write(diff));
 
   const { regions } = bucketDiffPixels(diff.data, width, height, cfg.gridSize, cfg.topRegions);
-  const verdict = diffPct > cfg.maxDiffPct ? 'fail' : 'pass';
+  const maxPct = effectiveMaxDiffPct(cfg, pair.route);
+  const verdict = diffPct > maxPct ? 'fail' : 'pass';
+  const overridden = maxPct !== cfg.maxDiffPct;
 
   return {
     design: pair.design,
     route: pair.route,
     verdict,
     diff_pct: diffPct,
-    max_diff_pct: cfg.maxDiffPct,
+    max_diff_pct: maxPct,
+    ...(overridden ? { max_diff_pct_source: 'routeOverride' } : {}),
     viewport: `${width}x${height}`,
     regions,
     screenshots: {
@@ -409,9 +432,11 @@ async function main() {
   // mutated `results` in-place to add per-route `stuck` / `stuck_delta_pp`.
   const stuckInfo = annotateStuck(results, prior?.routes);
 
+  const overrideCount = results.filter((r) => r.max_diff_pct_source === 'routeOverride').length;
+  const summary = `${results.length - failed.length}/${results.length} routes passed (default maxDiffPct=${cfg.maxDiffPct}%${overrideCount ? `, ${overrideCount} route override(s) applied` : ''})`;
   const payload = {
     verdict,
-    summary: `${results.length - failed.length}/${results.length} routes passed (maxDiffPct=${cfg.maxDiffPct}%)`,
+    summary,
     ...(stuckInfo.allStuck
       ? {
           stuck: true,

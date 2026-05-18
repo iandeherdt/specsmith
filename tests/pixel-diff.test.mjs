@@ -4,7 +4,7 @@
 // installed in this dev environment to test directly.
 
 import assert from 'node:assert';
-import { bucketDiffPixels, annotateStuck } from '../scripts/pixel-diff.mjs';
+import { bucketDiffPixels, annotateStuck, effectiveMaxDiffPct } from '../scripts/pixel-diff.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -173,6 +173,47 @@ test('annotateStuck: route with error (no diff_pct) is skipped', () => {
   const r = annotateStuck(current, prior);
   assert.strictEqual(r.comparedRoutes, 1);
   assert.strictEqual(r.allStuck, true);
+});
+
+// ─── effectiveMaxDiffPct ───────────────────────────────────────────────
+
+test('effectiveMaxDiffPct: no overrides → global threshold', () => {
+  const r = effectiveMaxDiffPct({ maxDiffPct: 7.0 }, '/dashboard');
+  assert.strictEqual(r, 7.0);
+});
+
+test('effectiveMaxDiffPct: matching route → override threshold', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: { '/contracts/[id]/indexation': { maxDiffPct: 11.0 } },
+  }, '/contracts/[id]/indexation');
+  assert.strictEqual(r, 11.0);
+});
+
+test('effectiveMaxDiffPct: non-matching route → global threshold', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: { '/contracts/[id]/indexation': { maxDiffPct: 11.0 } },
+  }, '/dashboard');
+  assert.strictEqual(r, 7.0);
+});
+
+test('effectiveMaxDiffPct: override entry without maxDiffPct → global', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: { '/dashboard': {} },
+  }, '/dashboard');
+  assert.strictEqual(r, 7.0);
+});
+
+test('effectiveMaxDiffPct: null routeOverrides → global', () => {
+  const r = effectiveMaxDiffPct({ maxDiffPct: 7.0, routeOverrides: null }, '/dashboard');
+  assert.strictEqual(r, 7.0);
+});
+
+test('effectiveMaxDiffPct: empty cfg → undefined fallthrough', () => {
+  const r = effectiveMaxDiffPct({}, '/dashboard');
+  assert.strictEqual(r, undefined);
 });
 
 console.log(`\n${passed} passed, ${failed} failed.`);

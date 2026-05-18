@@ -129,6 +129,23 @@ Most real apps redirect anonymous requests to `/login`. Without an authenticated
 
 This is a [Playwright storageState JSON](https://playwright.dev/docs/auth) (cookies + localStorage). It's applied **only to the actual-side screenshot** — the reference side (designs/*.html on the static designs server) doesn't need auth, and injecting cookies into a same-origin redirect chain that doesn't expect them causes its own problems. If the path is set but the file doesn't exist when pixel-diff runs, the script skips with a clear reason rather than silently screenshotting the login page.
 
+#### Per-route threshold overrides (`routeOverrides`)
+
+When one route has irreducible drift the others don't — a dense detail page with spread micro-drift, a chart-heavy view, or a complex form — loosening the global `maxDiffPct` to accommodate it gives the other routes 4-5pp of slack they don't need. Since v0.13.0, `pixelDiff.routeOverrides` lets you set a higher floor per-route while keeping the global tight:
+
+```json
+"pixelDiff": {
+  "maxDiffPct": 7.0,
+  "routeOverrides": {
+    "/contracts/[id]/indexation": { "maxDiffPct": 11.0 }
+  }
+}
+```
+
+Matching is by exact route key (as it appears in `routes`, or the default `/<slug>` for `designs/<slug>.html`). The output JSON tags overridden routes with `max_diff_pct_source: "routeOverride"` so the evaluator surfaces them explicitly. Keep the override list small — every entry is a noise floor that has to be remembered when reading future diffs.
+
+#### Auth-wrapper pattern
+
 The typical pattern is a project-local wrapper script (e.g. `scripts/run-pixel-diff.mjs`) that:
 1. Reads dev-server URL from `pipeline/dev-server-url`
 2. Spins up a Playwright browser, runs the project's login flow, writes `await context.storageState({ path: 'pipeline/storage-state.json' })`
