@@ -360,17 +360,30 @@ If `designs/coverage.md` exists (written by the designing-interfaces agent), use
    ```bash
    DESIGNS_URL=$(node .claude/scripts/start-dev-server.mjs --url-file=pipeline/designs-server-url --log=pipeline/designs-server.log -- npx serve designs -l 3100)
    ```
-2. **Run the pixel-diff convention** (primary path):
+2. **Run BOTH design-fidelity diffs** (primary path):
    ```bash
    node .claude/scripts/pixel-diff.mjs --out pipeline/feedback
+   node .claude/scripts/dom-diff.mjs --out pipeline/feedback
    ```
-   The script reads the `pixelDiff` block from `.claude/conventions.json`, pairs each `designs/*.html` with its matching route on the dev server, opens both in headless Chromium at the same viewport, diffs them with pixelmatch, and writes a structured JSON report to stdout plus three PNGs per route to `pipeline/feedback/` (reference, actual, diff overlay).
+   These are **complementary**, not interchangeable:
+   - **pixel-diff** measures visual similarity. Outputs `diff_pct` + region coordinates. Good at: visual chrome differences, missing components, layout shifts, color/font drift. Bad at: text-label changes, column-header changes, format-conventie diffs (€ prefix vs suffix) — because anti-aliasing detection + threshold can absorb 5-15pp of semantic drift when layout stays the same.
+   - **dom-diff** measures structural / textual contract. Extracts headings, table column headers, nav labels, button labels, landmarks; normalises names/numbers/dates/UUIDs/addresses to placeholders; reports specific differences. Good at: "h1 changed from X to Y", "TRANSACTIE column missing", "sidebar user-chip absent", "currency format prefix vs suffix". Bad at: visual styling drift that doesn't change structure or text.
+   - A route can pass pixel-diff (under threshold) while failing dom-diff (semantic mismatch). The reverse is also possible. **Both must pass** for the design-fidelity check to succeed.
 
-   Capture and parse the JSON:
+   The pixel-diff script reads the `pixelDiff` block from `.claude/conventions.json`, pairs each `designs/*.html` with its matching route on the dev server, opens both in headless Chromium at the same viewport, diffs them with pixelmatch, and writes a structured JSON report to stdout plus three PNGs per route to `pipeline/feedback/` (reference, actual, diff overlay). The dom-diff script reads the `domDiff` block, takes the same routes, extracts structured snapshots, and writes a flat list of structural differences to `pipeline/feedback/dom-diff.json`.
+
+   Capture and parse both JSON outputs:
    ```bash
    PIXEL_DIFF_JSON=$(node .claude/scripts/pixel-diff.mjs --out pipeline/feedback)
    echo "$PIXEL_DIFF_JSON" > pipeline/feedback/pixel-diff.json
+   DOM_DIFF_JSON=$(node .claude/scripts/dom-diff.mjs --out pipeline/feedback)
+   # dom-diff also writes pipeline/feedback/dom-diff.json itself.
    ```
+
+   **For each route, combine the two signals:**
+   - If `dom-diff` reports `differences` for a route, those are concrete, actionable carryovers. Each `{ type, value }` or `{ type, header, tableIndex }` becomes a `[High]` design-fidelity issue: "h1 changed from `Betalingsoverzicht` to `Betalingen`", "table column `TRANSACTIE` missing", "nav label `Afmelden` missing", "landmark `sidebar` missing". The developer can fix each one individually — no PNG-eyeballing required.
+   - If `pixel-diff` reports `verdict: fail` but `dom-diff` shows zero differences for the same route, the gap is visual styling (color, spacing, typography) without text/structure change. Open the diff overlay PNG, identify the styling drift, and write the carryover accordingly.
+   - If both pass, the route passes design-fidelity. No further work needed.
 
    Then branch on `verdict`:
    - **`verdict: "pass"`** — every route's `diff_pct` is at or below `maxDiffPct`. Record one-line success per route in the feedback file. Skip the manual landmark comparison in step 3 below — it would be duplicate work.

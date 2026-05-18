@@ -56,6 +56,18 @@
     }
   ],
 
+  "domDiff": {
+    "_doc": "Structural / textual diff to complement pixelDiff. Where pixel-diff measures visual similarity (and under-reports semantic mismatches when layout is the same but content differs — a known limit of anti-aliased text comparison), dom-diff extracts a structured snapshot per page (headings, table column headers, nav labels, button labels, landmarks), normalises dynamic content (names, numbers, dates, UUIDs, OGMs, transaction IDs, emails, phones, currency amounts) to placeholders, and diffs what remains: the textual / structural contract. Catches 'TRANSACTIE column missing', 'h1 changed', 'currency format prefix vs suffix', 'sidebar user-chip absent' — gaps pixel-diff sees as <7% drift and waves through. Requires playwright in the host project (same dep as pixelDiff). Skips gracefully if missing.",
+    "enabled": true,
+    "viewport": "1280x800",
+    "waitFor": null,
+    "routes": null,
+    "routeOverrides": null,
+    "storageStatePath": null,
+    "maxDifferences": 0,
+    "_maxDifferencesNote": "How many normalised differences a route can have before its verdict flips to fail. Default 0 — every difference is significant once names/numbers/dates are stripped out. Raise per-route via routeOverrides when one route is genuinely allowed to drift from its prototype (rare; almost always a sign the prototype should be updated instead)."
+  },
+
   "pixelDiff": {
     "_doc": "Visual regression for design fidelity. Run by the evaluator agent via .claude/scripts/pixel-diff.mjs: for each designs/<slug>.html prototype, opens both the prototype and the matching route on the dev server in headless Chromium at the same viewport, diffs the screenshots with pixelmatch, and reports the worst-offending regions as coordinates + intensity. Replaces the evaluator's manual landmark snapshot comparison when it runs. Requires the host project to install playwright + pixelmatch + pngjs (the script skips gracefully if any are missing, and the evaluator falls back to the manual comparison). Disable by setting enabled: false.",
     "enabled": true,

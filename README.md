@@ -184,6 +184,37 @@ Three rules in the evaluator make sure issues don't quietly carry forward across
 
 **Bypassing the guard.** Set `SPECSMITH_GUARD_OVERRIDE=<reason>` (any non-empty value) in your shell BEFORE launching Claude Code if you want to disable both rules for a session. The override is honored only outside hook context (manual script invocation for testing); under a hook — which is every Claude Code Bash call — the override is **ignored** and the attempt is appended to `pipeline/traces/guard-bypass-attempts.log` for you to see. This closes the loophole earlier versions left open, where an agent could dodge the guard by exporting the env var in its bash session. To truly disable the guard for a session, remove the hook entry from `.claude/settings.json` instead of relying on the override var.
 
+### Structural diff (`dom-diff`, v0.18.0+)
+
+Pixel-diff has a known weakness: when two pages share the same layout but render different text/data, the pixel-level diff often falls under threshold (anti-aliasing detection + the per-pixel YIQ tolerance absorb most text-edge differences). A page titled "Betalingen" reports as 6.7% different from a prototype titled "Betalingsoverzicht" — under a 7% threshold, it passes, even though the title is wrong, the table column headers differ, and a whole sidebar region is missing.
+
+`scripts/dom-diff.mjs` (also wired into evaluator Step 2b since v0.18.0) is the semantic complement. For each `(designs/<slug>.html, /<route>)` pair, it extracts a structured snapshot — headings (`h1`/`h2`/`h3`), table column headers, nav labels, button labels, ARIA landmarks — then **normalises dynamic content** (names, numbers, dates, UUIDs, OGMs, transaction IDs, emails, phones, addresses) to placeholders (`<NAME>`, `<NUMBER>`, `<DATE>`, …) so what's compared is the textual / structural contract, not the seed data. Currency format is intentionally preserved as `€ <NUMBER>` vs `<NUMBER> €` so the prefix-vs-suffix style mismatch surfaces.
+
+The output is a flat list of concrete differences:
+
+```json
+{
+  "verdict": "fail",
+  "summary": "0/1 routes passed structural diff (5 total differences after normalisation)",
+  "routes": [{
+    "route": "/contracts/[id]/periods",
+    "verdict": "fail",
+    "difference_count": 5,
+    "differences": [
+      { "type": "h1-missing", "value": "Betalingsoverzicht" },
+      { "type": "h1-extra", "value": "Betalingen" },
+      { "type": "table-column-missing", "tableIndex": 0, "header": "TRANSACTIE" },
+      { "type": "table-column-extra", "tableIndex": 0, "header": "BETAALD OP" },
+      { "type": "landmark-missing", "value": "sidebar-user-chip" }
+    ]
+  }]
+}
+```
+
+The evaluator combines this with the pixel-diff output. Each `{ type, value }` or `{ type, header }` becomes one `[High]` carryover — no PNG-eyeballing required for substantive design gaps. Pixel-diff still catches visual styling drift that doesn't change structure (colors, spacing, typography). Both must pass for the design-fidelity check to succeed.
+
+Same dep + CLI conventions as pixel-diff: opt-in via `domDiff` config block in `.claude/conventions.json` (enabled by default after v0.18.0 init/update), per-route overrides via `routeOverrides`, `--storage-state <path>` CLI flag for auth-protected routes.
+
 ### Scope guard (Constitution Principle VIII)
 
 Since v0.15.0, `scripts/guard-scope.mjs` is installed as a `PreToolUse` hook on `Edit | Write | MultiEdit | NotebookEdit`. It refuses any edit on:
