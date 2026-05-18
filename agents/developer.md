@@ -311,3 +311,20 @@ to any tracking files.
   `cat /proc/<pid>/cmdline` (or `ps -p <pid> -o args=`) shows the actual
   current command rather than historic argv from a parent shell snapshot.
   Don't loop on phantom PIDs.
+- **JSX comment placement**: JSX braces `{/* ... */}` are only valid INSIDE
+  JSX (between elements or as siblings of children), NOT in the whitespace
+  zone right after `return (` and before the root element. Putting them
+  there parses as multiple expressions in a single return — a syntax error
+  like `Expected ','`, got `'{'`. The fix: multi-line context comments go
+  ABOVE `return (` as plain `// ...` lines. JSX comments stay inside JSX:
+  ```tsx
+  // This comment is fine — it lives in the function body, not in JSX.
+  return (
+    <div>
+      {/* This comment is also fine — it's a child of <div>. */}
+      <span>hello</span>
+    </div>
+  );
+  ```
+  A self-broken build costs a full cycle to diagnose (curl returns 500,
+  dev-server log surfaces the SyntaxError) — catch it at edit time.

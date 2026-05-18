@@ -32,7 +32,13 @@ const DESIGNS_URL_FILE = join(CWD, 'pipeline', 'designs-server-url');
 const DEFAULTS = {
   enabled: true,
   viewport: '1280x800',
-  maxDiffPct: 2.0,
+  // Default raised from 2.0 → 5.0 in v0.10.0: at 2.0 the diff against a hand-
+  // written static-HTML prototype rarely converges for a real app — font
+  // hinting, computed greetings/timestamps, and live data introduce ~3-6%
+  // irreducible drift that no seed-tuning will remove. 5% surfaces structural
+  // gaps without flagging cosmetic ones. Tune for goldenscreenshot-strict
+  // regression by setting maxDiffPct lower in .claude/conventions.json.
+  maxDiffPct: 5.0,
   threshold: 0.1,
   gridSize: 50,
   topRegions: 10,
@@ -40,6 +46,11 @@ const DEFAULTS = {
   waitFor: null,
   routes: null,
 };
+
+// If the same per-route diff_pct moves less than this many percentage points
+// between consecutive runs, the diff is considered "stuck" and the script
+// emits a `stuck: true` flag so the caller stops chasing micro-edits.
+const STUCK_DELTA_PP = 0.5;
 
 function parseArgs(argv) {
   const out = { outDir: DEFAULT_OUT_DIR, routesOverride: null };
@@ -96,6 +107,45 @@ function readUrlFile(path) {
 function emit(payload, exitCode) {
   process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
   process.exit(exitCode);
+}
+
+// Pure function — exported for tests. Compares each current route's diff_pct
+// against the prior run's value (matched by route key). Mutates each route
+// in `currentRoutes` to add `stuck` and `stuck_delta_pp` fields when its
+// diff_pct moved less than `STUCK_DELTA_PP` percentage points. Returns an
+// aggregate `{ allStuck, anyStuck, comparedRoutes, stuckRoutes }`. Used to
+// flag "the loop has plateaued, stop chasing the diff" to the caller.
+export function annotateStuck(currentRoutes, priorRoutes) {
+  if (!priorRoutes || !priorRoutes.length) {
+    return { allStuck: false, anyStuck: false, comparedRoutes: 0, stuckRoutes: 0 };
+  }
+  const priorByRoute = new Map(priorRoutes.map((r) => [r.route, r]));
+  let stuckCount = 0;
+  let compared = 0;
+  for (const r of currentRoutes) {
+    const prior = priorByRoute.get(r.route);
+    if (!prior) continue;
+    if (typeof r.diff_pct !== 'number' || typeof prior.diff_pct !== 'number') continue;
+    compared++;
+    const delta = Math.abs(r.diff_pct - prior.diff_pct);
+    r.stuck_delta_pp = Number(delta.toFixed(2));
+    if (delta < STUCK_DELTA_PP) {
+      r.stuck = true;
+      stuckCount++;
+    }
+  }
+  return {
+    allStuck: compared > 0 && stuckCount === compared,
+    anyStuck: stuckCount > 0,
+    comparedRoutes: compared,
+    stuckRoutes: stuckCount,
+  };
+}
+
+function loadPriorRun(outDir) {
+  const path = join(outDir, 'pixel-diff.json');
+  if (!existsSync(path)) return null;
+  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
 }
 
 // Pure function — exported for unit tests. Walks a pixelmatch-style
@@ -255,6 +305,11 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   mkdirSync(args.outDir, { recursive: true });
 
+  // Read the prior run's payload (if any) BEFORE writing this run's screenshots
+  // — once we start writing, the on-disk PNG names collide with whatever the
+  // last run left behind, so we have to capture the prior diff_pct first.
+  const prior = loadPriorRun(args.outDir);
+
   const cfg = loadConfig();
   if (!cfg) {
     emit({ verdict: 'skip', reason: 'no pixelDiff config in .claude/conventions.json' }, 0);
@@ -320,11 +375,37 @@ async function main() {
 
   const failed = results.filter((r) => r.verdict === 'fail');
   const verdict = failed.length === 0 ? 'pass' : 'fail';
-  emit({
+
+  // Compare against the prior run (if any) to detect a plateaued diff. The
+  // prior payload is on disk from this script's previous invocation; we
+  // mutated `results` in-place to add per-route `stuck` / `stuck_delta_pp`.
+  const stuckInfo = annotateStuck(results, prior?.routes);
+
+  const payload = {
     verdict,
     summary: `${results.length - failed.length}/${results.length} routes passed (maxDiffPct=${cfg.maxDiffPct}%)`,
+    ...(stuckInfo.allStuck
+      ? {
+          stuck: true,
+          stuck_reason:
+            `diff_pct has stabilised on every compared route ` +
+            `(${stuckInfo.stuckRoutes}/${stuckInfo.comparedRoutes}, all within ${STUCK_DELTA_PP}pp of the prior run). ` +
+            `Further micro-edits are unlikely to lower the diff. Options:\n` +
+            `  - Raise \`pixelDiff.maxDiffPct\` in .claude/conventions.json if the current floor is acceptable for this view.\n` +
+            `  - Add CSS-selector masks to \`pixelDiff.masks\` for the irreducible regions (timestamps, computed greetings, dynamic counts).\n` +
+            `  - Accept the current diff_pct as the baseline and move on to other tasks.`,
+        }
+      : {}),
     routes: results,
-  }, verdict === 'fail' ? 1 : 0);
+  };
+
+  // Persist the payload so the next run can detect plateaus. Independent of
+  // whether the caller redirects stdout; the file always lands here.
+  try {
+    writeFileSync(join(args.outDir, 'pixel-diff.json'), JSON.stringify(payload, null, 2));
+  } catch {}
+
+  emit(payload, verdict === 'fail' ? 1 : 0);
 }
 
 // Only run main() when invoked as a CLI — leave the module importable for tests.

@@ -376,11 +376,18 @@ If `designs/coverage.md` exists (written by the designing-interfaces agent), use
    - **`verdict: "pass"`** — every route's `diff_pct` is at or below `maxDiffPct`. Record one-line success per route in the feedback file. Skip the manual landmark comparison in step 3 below — it would be duplicate work.
    - **`verdict: "fail"`** — at least one route exceeded `maxDiffPct`. For each failed route in `routes[]`:
      - Treat it as **[High] severity, automatic**, regardless of `diff_pct`. A failing pixel-diff means the implementation does not visually match the prototype, which is exactly what Design Fidelity is meant to catch.
+     - **Read the `regions[]` array FIRST**, before opening any PNG. Each region is `{x, y, w, h, intensity}` — that tells you WHERE the diff lives (top-of-page, sidebar, specific card) without spending tokens on a 150 KB image. For a 1280×800 viewport, `y < 100` means the topbar/header zone, `y < 400` means above-the-fold content, `x < 240` means the desktop sidebar, and so on. Most of the time the regions alone are enough to know what kind of fix to make (layout vs missing-region vs colour drift).
      - Embed the `regions[]` coordinates verbatim in the feedback file — they tell the developer WHERE to look.
-     - Embed the diff overlay PNG path (`screenshots.diff`) — open it in your evidence list. The magenta areas are the parts that differ.
+     - **Only open the diff overlay PNG (`screenshots.diff`)** when the regions don't tell you what KIND of edit to make — e.g. the regions cluster in one part of the page but you can't tell from coordinates alone whether the problem is a missing section, a layout shift, or a colour mismatch. The magenta areas show the differences visually. Do NOT re-read the same PNG on subsequent cycles; the file hasn't changed between your reads.
      - Cross-reference `designs/coverage.md` if it exists: map the high-intensity regions to `<ComponentName>` entries by their position on the prototype (top-of-page = first regions in the file, etc.). Name the components in the carryover entry so the developer can locate them.
-     - The diff overlay is the evidence — no extra side-by-side screenshots needed.
+     - The diff overlay is the evidence when you need it — no extra side-by-side screenshots needed.
    - **`verdict: "skip"`** — the script noped out (deps missing, no `designs/`, server URLs missing, or `enabled: false`). The JSON has a `reason` field. Fall back to step 3 below (the manual landmark comparison), and note the skip reason in your feedback so the user knows pixel-diff didn't run.
+
+   **Plateau detection (`stuck: true`):** If the JSON payload includes `"stuck": true` (set by the script when every compared route's `diff_pct` moved less than 0.5pp from the prior run), the diff has converged to its current floor. Do NOT loop the developer for another micro-edit cycle — that's exactly the failure mode the flag exists to break. Instead, in your feedback file:
+   - Copy the `stuck_reason` string verbatim under a `## Pixel-diff plateau` heading.
+   - Tell the user (in `## Issues Found`) that the diff has stabilised and list the floors (`/dashboard: 6.5%`, `/login: 3.6%`, …).
+   - Recommend one of the three options the `stuck_reason` lists: raise `pixelDiff.maxDiffPct`, add masks, or accept the baseline.
+   - This is a **user decision**, not an automatic [High] severity. Mark the phase carryovers `_None — pixel-diff stuck, waiting on threshold/mask decision._` so the build orchestrator doesn't trigger another cycle.
 
 3. **Manual landmark comparison (fallback — only when step 2 returned `verdict: "skip"`):**
    - `mcp__playwright__browser_navigate` to `<DESIGNS_URL>/<prototype>.html`.

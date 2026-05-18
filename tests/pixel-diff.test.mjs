@@ -4,7 +4,7 @@
 // installed in this dev environment to test directly.
 
 import assert from 'node:assert';
-import { bucketDiffPixels } from '../scripts/pixel-diff.mjs';
+import { bucketDiffPixels, annotateStuck } from '../scripts/pixel-diff.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -103,6 +103,76 @@ test('opaque non-red diff pixel still counted (alpha=255 trumps color)', () => {
   const r = bucketDiffPixels(buf, 50, 50, 50, 10);
   assert.strictEqual(r.totalDiffPixels, 1);
   assert.strictEqual(r.regions.length, 1);
+});
+
+// ─── annotateStuck ─────────────────────────────────────────────────────
+
+test('annotateStuck: no prior run → not stuck', () => {
+  const current = [{ route: '/a', diff_pct: 6.5 }];
+  const r = annotateStuck(current, null);
+  assert.strictEqual(r.allStuck, false);
+  assert.strictEqual(r.comparedRoutes, 0);
+  assert.strictEqual(current[0].stuck, undefined);
+});
+
+test('annotateStuck: small delta on all routes → allStuck', () => {
+  const current = [
+    { route: '/a', diff_pct: 6.50 },
+    { route: '/b', diff_pct: 3.61 },
+  ];
+  const prior = [
+    { route: '/a', diff_pct: 6.49 },
+    { route: '/b', diff_pct: 3.65 },
+  ];
+  const r = annotateStuck(current, prior);
+  assert.strictEqual(r.allStuck, true);
+  assert.strictEqual(r.comparedRoutes, 2);
+  assert.strictEqual(r.stuckRoutes, 2);
+  assert.strictEqual(current[0].stuck, true);
+  assert.strictEqual(current[0].stuck_delta_pp, 0.01);
+  assert.strictEqual(current[1].stuck, true);
+});
+
+test('annotateStuck: large delta on one route → not allStuck', () => {
+  const current = [
+    { route: '/a', diff_pct: 6.5 },
+    { route: '/b', diff_pct: 1.0 },  // dropped from 5.0
+  ];
+  const prior = [
+    { route: '/a', diff_pct: 6.4 },
+    { route: '/b', diff_pct: 5.0 },
+  ];
+  const r = annotateStuck(current, prior);
+  assert.strictEqual(r.allStuck, false);
+  assert.strictEqual(r.anyStuck, true);
+  assert.strictEqual(current[0].stuck, true);
+  assert.strictEqual(current[1].stuck, undefined);
+});
+
+test('annotateStuck: route missing from prior is skipped, not stuck', () => {
+  const current = [
+    { route: '/a', diff_pct: 6.5 },
+    { route: '/new', diff_pct: 4.0 },
+  ];
+  const prior = [{ route: '/a', diff_pct: 6.4 }];
+  const r = annotateStuck(current, prior);
+  assert.strictEqual(r.comparedRoutes, 1);
+  assert.strictEqual(r.allStuck, true);  // every COMPARED route is stuck
+  assert.strictEqual(current[1].stuck, undefined);
+});
+
+test('annotateStuck: route with error (no diff_pct) is skipped', () => {
+  const current = [
+    { route: '/a', diff_pct: 6.5 },
+    { route: '/broken', verdict: 'fail', error: 'page.goto timeout' },
+  ];
+  const prior = [
+    { route: '/a', diff_pct: 6.4 },
+    { route: '/broken', diff_pct: 8.0 },
+  ];
+  const r = annotateStuck(current, prior);
+  assert.strictEqual(r.comparedRoutes, 1);
+  assert.strictEqual(r.allStuck, true);
 });
 
 console.log(`\n${passed} passed, ${failed} failed.`);
