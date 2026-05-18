@@ -316,20 +316,33 @@ async function main() {
   }
 
   const viewport = parseViewport(cfg.viewport);
+  process.stderr.write(`pixel-diff: ${routes.length} route(s)\n`);
   const browser = await deps.chromium.launch();
   const results = [];
   try {
+    let i = 0;
     for (const pair of routes) {
+      i++;
+      const t0 = Date.now();
       try {
         const res = await diffPair(deps, pair, cfg, viewport, args.outDir, browser);
         results.push(res);
+        const ms = Date.now() - t0;
+        const pct = typeof res.diff_pct === 'number' ? `${res.diff_pct.toFixed(2)}%` : '—';
+        process.stderr.write(
+          `  [${i}/${routes.length}] ${pair.route} → ${res.verdict} (${pct}, ${ms}ms)\n`
+        );
       } catch (err) {
+        const ms = Date.now() - t0;
         results.push({
           design: pair.design,
           route: pair.route,
           verdict: 'fail',
           error: err.message,
         });
+        process.stderr.write(
+          `  [${i}/${routes.length}] ${pair.route} → ERROR (${ms}ms): ${err.message}\n`
+        );
       }
     }
   } finally {

@@ -364,11 +364,13 @@ If `designs/coverage.md` exists (written by the designing-interfaces agent), use
    node .claude/scripts/ensure-servers.mjs --designs
    DESIGNS_URL=$(cat pipeline/designs-server-url)
    ```
-2. **Run BOTH design-fidelity diffs** (primary path). Each writes its JSON to disk — read the disk file with the `show-*` helpers, do NOT capture the stdout into a shell variable and parse it inline.
+2. **Run BOTH design-fidelity diffs in parallel** (primary path). Each writes its JSON to disk independently — they read the same dev server but write to different output files, so parallelisation is safe and ~halves the wall-time. Per-route progress prints to stderr as `[i/N] /route → verdict (...)` so you can see it making progress (or catch a hung route immediately, no more silent 5-minute waits).
    ```bash
-   node .claude/scripts/pixel-diff.mjs --out pipeline/feedback
-   node .claude/scripts/dom-diff.mjs --out pipeline/feedback
+   node .claude/scripts/pixel-diff.mjs --out pipeline/feedback &
+   node .claude/scripts/dom-diff.mjs --out pipeline/feedback &
+   wait
    ```
+   Each subprocess's stderr is interleaved in the terminal — that's the desired output. Their exit codes don't propagate through `wait` automatically; if you need to branch on verdict, read the JSON files via the `show-*` helpers below. Do NOT capture stdout into a shell variable and parse it inline.
    These are **complementary**, not interchangeable:
    - **pixel-diff** measures visual similarity. Outputs `diff_pct` + region coordinates. Good at: visual chrome differences, missing components, layout shifts, color/font drift. Bad at: text-label changes, column-header changes, format-conventie diffs (€ prefix vs suffix) — because anti-aliasing detection + threshold can absorb 5-15pp of semantic drift when layout stays the same.
    - **dom-diff** measures structural / textual contract. Extracts headings, table column headers, nav labels, button labels, landmarks; normalises names/numbers/dates/UUIDs/addresses to placeholders; reports specific differences. Good at: "h1 changed from X to Y", "TRANSACTIE column missing", "sidebar user-chip absent", "currency format prefix vs suffix". Bad at: visual styling drift that doesn't change structure or text.
