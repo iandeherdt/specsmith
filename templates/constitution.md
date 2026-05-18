@@ -79,6 +79,29 @@
 - Deviations from design or architecture require explicit approval
   and documentation of the rationale.
 
+### VIII. Scope Discipline
+
+- Every `Edit` / `Write` / `Bash` invocation during a feature
+  build MUST serve a task currently `- [ ]` in the active spec's
+  `tasks.md`. Work that is not listed there is out-of-scope.
+- Pre-existing constitution violations on `HEAD` (oversized files,
+  missing components, leaked secrets) that pre-date the current
+  branch are NOT this spec's work. They MUST be recorded as
+  carryovers and addressed in their own spec — fixing them
+  alongside unrelated feature work pollutes the diff, lengthens
+  cycles, and hides which change caused which regression.
+- The specsmith tooling itself — `.claude/scripts/`,
+  `.claude/agents/`, `.claude/skills/`, `.claude/specsmith/`, and
+  the `templates/` directory — is managed by specsmith, NOT by
+  feature work. Edits to these paths during a `/build` run are
+  out-of-scope by definition. If specsmith tooling actually needs
+  to change, that is its own spec in the specsmith repository,
+  not a side effect of a feature build downstream.
+- The evaluator subagent MUST verify every task before its
+  checkbox flips. The developer cannot self-certify. Skipping the
+  evaluator is a scope violation of this principle — verification
+  is part of the spec, not optional.
+
 ## Development Workflow
 
 - Every pull request MUST include tests that cover the changed

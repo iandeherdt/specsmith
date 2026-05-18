@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { install } from '../lib/installer.mjs';
 import { update } from '../lib/update.mjs';
+import { verify } from '../lib/verify.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
@@ -13,6 +14,7 @@ const HELP = `Usage: ${pkg.name} <command> [options]
 Commands:
   init      Install skills, agents, scripts, constitution, and Playwright MCP into the current project
   update    Selectively update tracked files; preserves locally-modified ones (use --force to overwrite)
+  verify    Three-way hash check (disk vs manifest vs package); detects tampering and drift without changing anything
   help      Show this help
 
 Options:
@@ -50,6 +52,9 @@ async function main() {
       return;
     case 'update':
       await update(projectRoot, parseFlags(rest));
+      return;
+    case 'verify':
+      await verify(projectRoot);
       return;
     case '-v':
     case '--version':

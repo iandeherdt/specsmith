@@ -43,7 +43,14 @@ Before the first phase, write `pipeline/run-state.md` so subagents do not re-dis
 **Phase count**: <total phases in tasks.md>
 **Has designs/**: yes | no
 **Constitution path**: .claude/constitution.md
+
+**Working tree at run start** (output of `git status --porcelain`):
 ```
+<paste the bash output verbatim>
+```
+```
+
+Run `git status --porcelain` once at startup and embed the output in the block above. This snapshot kills the most common waste pattern: the orchestrator re-querying git repeatedly throughout a phase ("did I commit this yet?", "which files am I touching?", "what's untracked?"). After the snapshot is written, refer back to it rather than re-running git status. Re-query only when you yourself have committed something (i.e. the tree state actually changed).
 
 Update the per-phase detail at the start of each phase (append or rewrite the **Phase in progress** block):
 
@@ -229,7 +236,9 @@ Verdict: [PASS — moving to next phase / FAIL — retrying with feedback / BLOC
 
 ## Rules
 
-- Never implement or evaluate yourself — always delegate
+- **Never implement or evaluate yourself — always delegate.** This is Constitution Principle VIII (Scope Discipline) at the orchestrator level. Once you dispatch a developer or evaluator via the `Agent` tool, your scope is "wait for the return, then route the next step" — not "do the work inline while waiting". Concretely: between an `Agent` dispatch and its return, your ONLY allowed tool calls are read-only ones (Read the dispatched return, Read the feedback file the evaluator just wrote, status snapshots that don't mutate state). If you find yourself reaching for `Edit` / `Write` / `Bash` on source files mid-dispatch, stop. That's the developer's job, not yours. A real failure mode caught in the wild: orchestrator dispatched Slice A, then did Slices A-F's work itself inline, never invoked the evaluator, and committed checkboxes flipped without verification. Don't be that orchestrator.
+- **Do not edit specsmith tooling paths.** Edits to `.claude/scripts/`, `.claude/agents/`, `.claude/skills/`, `.claude/specsmith/`, or `templates/` are out-of-scope for a feature build per Constitution Principle VIII. The `guard-scope.mjs` hook (installed by default since v0.15.0) will refuse such edits with a clear message. If you need to change specsmith itself, that is a separate spec in the specsmith repository, not a side effect of this build.
+- **Pre-existing convention violations are carryovers, not immediate work.** If `check-conventions.mjs` flags a file that was already over its line cap on `HEAD` (i.e. before this branch existed), record it in the carryover list of the current cycle's feedback file. Do NOT spend the current phase paging through the file and splitting it — that's a separate refactor spec.
 - Each subagent gets fresh context automatically
 - Pass `subagent_type` to the Agent tool: `"developing-features"` for developer, `"evaluating-phases"` for evaluator
 - Keep the evaluator prompt minimal — only phase context. The agent file handles browser tools, rules, and scoring

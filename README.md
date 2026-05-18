@@ -184,6 +184,41 @@ Three rules in the evaluator make sure issues don't quietly carry forward across
 
 **Bypassing the guard.** Set `SPECSMITH_GUARD_OVERRIDE=<reason>` (any non-empty value) in your shell BEFORE launching Claude Code if you want to disable both rules for a session. The override is honored only outside hook context (manual script invocation for testing); under a hook — which is every Claude Code Bash call — the override is **ignored** and the attempt is appended to `pipeline/traces/guard-bypass-attempts.log` for you to see. This closes the loophole earlier versions left open, where an agent could dodge the guard by exporting the env var in its bash session. To truly disable the guard for a session, remove the hook entry from `.claude/settings.json` instead of relying on the override var.
 
+### Scope guard (Constitution Principle VIII)
+
+Since v0.15.0, `scripts/guard-scope.mjs` is installed as a `PreToolUse` hook on `Edit | Write | MultiEdit | NotebookEdit`. It refuses any edit on:
+
+- `.claude/scripts/`
+- `.claude/agents/`
+- `.claude/skills/`
+- `.claude/specsmith/` (the manifest lives here — tampering protection)
+- `templates/`
+
+These are specsmith tooling paths. Edits to them during a feature build are out-of-scope per the new Constitution Principle VIII (Scope Discipline): every Edit/Write/Bash during a build must serve a task in the active spec's `tasks.md`, and modifying specsmith itself is by definition not a feature task. The guard catches the failure mode where a subagent drifts into "let me also fix this convention violation in `pixel-diff.mjs` while I'm at it" — which historically caused manifest tampering and silent restoration loops.
+
+If you (the human operator) genuinely need to edit one of these paths from inside a host project — e.g. you ARE working on specsmith itself in a worktree, or you need a local patch — create `pipeline/scope-waiver.txt` with one path per line:
+
+```bash
+echo ".claude/scripts/pixel-diff.mjs" >> pipeline/scope-waiver.txt
+```
+
+The waiver is per-path; siblings stay blocked. Delete the line once the edit is done. The `SPECSMITH_SCOPE_OVERRIDE` env var (analogous to the repeat-command override) is ignored in hook context for the same reason as `SPECSMITH_GUARD_OVERRIDE` — agents don't get to dodge it.
+
+### Manifest integrity (`specsmith verify`)
+
+```bash
+npx specsmith verify
+```
+
+Three-way hash comparison: every tracked file's on-disk hash vs the SHA recorded in `manifest.json` vs the SHA in the installed npm package. Catches three drift classes:
+
+- **`MODIFIED`** (low concern): on-disk differs from package, manifest intact — normal user edit. `update` correctly skips.
+- **`STALE`** (low concern): on-disk matches package but manifest hash hasn't been refreshed since a prior version. Harmless; next `update` refreshes.
+- **`TAMPERED`** ⚠ (high concern): on-disk matches manifest but BOTH differ from package — an agent or process edited a tooling file AND rewrote the manifest entry to hide it. `update` would otherwise treat this as "unmodified since install" and silently accept the corrupted state as the new baseline. This is the failure mode the scope guard above prevents going forward; `verify` is the detector for prior damage.
+- **`DRIFTED`** (medium concern): all three differ — user-modified after a prior version upgrade, or a partial install. Reconcile manually.
+
+The command exits 1 when any high-concern entries are found, with a one-line restore hint per file.
+
 ### Run the loops in an isolated environment
 
 `Bash(*)` means a Claude Code session running in this project can execute *any* shell command the host user can run — including `git push`, reading `.env*` files, hitting your cloud provider CLIs, calling `gh` against your repos, and so on. For anything beyond a personal sandbox, run the loops in an environment with a smaller blast radius:
