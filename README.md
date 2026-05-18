@@ -215,6 +215,8 @@ The evaluator combines this with the pixel-diff output. Each `{ type, value }` o
 
 Same dep + CLI conventions as pixel-diff: opt-in via `domDiff` config block in `.claude/conventions.json` (enabled by default after v0.18.0 init/update), per-route overrides via `routeOverrides`, `--storage-state <path>` CLI flag for auth-protected routes.
 
+**Routes resolution (v0.19.1+).** `domDiff.routes` follows a four-level priority chain: explicit CLI override → `domDiff.routes` → `pixelDiff.routes` → `discoverRoutes()` (pair each `designs/<slug>.html` with `/<slug>`). The fall-through to `pixelDiff.routes` exists because the two tools target the same prototype pairs — when filenames don't match nested route paths (e.g. `designs/settings-sharepoint.html` ↔ `/settings/sharepoint`), making the user duplicate the mapping is footgun-prone (caught in a downstream trace where every dom-diff route hit 404 and Playwright hung on the timeouts). Leave `domDiff.routes: null` and let `pixelDiff.routes` drive both; the resolved source ends up in the output JSON as `routes_source` so the evaluator can tell which list ran.
+
 ### Scope guard (Constitution Principle VIII)
 
 Since v0.15.0, `scripts/guard-scope.mjs` is installed as a `PreToolUse` hook on `Edit | Write | MultiEdit | NotebookEdit`. It refuses any edit on:
