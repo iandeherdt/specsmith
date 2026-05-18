@@ -68,6 +68,8 @@
     "masks": ["[data-volatile]", "time", ".timestamp"],
     "waitFor": null,
     "routes": null,
+    "storageStatePath": null,
+    "_storageStateNote": "Path to a Playwright storageState JSON (cookies + localStorage), applied ONLY to the actual-side screenshot — never to the reference (designs/*.html doesn't need auth). Use when routes are auth-protected: a project-local wrapper script logs in once, writes the storageState to a known path (e.g. pipeline/storage-state.json), and either sets this field or passes `--storage-state <path>` at the CLI (CLI wins). If the path is set but the file doesn't exist when pixel-diff runs, the script skips with a clear reason instead of silently screenshotting the login page.",
     "_routesNote": "If null, the script pairs each designs/<slug>.html with route /<slug> (and index.html with /). Override with an array like [{\"design\": \"designs/dashboard.html\", \"route\": \"/dashboard\"}] when filename ≠ route, or when only a subset of prototypes are ready to diff."
   }
 }

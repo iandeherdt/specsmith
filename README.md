@@ -102,6 +102,27 @@ The script skips gracefully with an install hint when any are missing, so leavin
 
 The script also writes a `pixel-diff.json` file in the output directory and reads it on the next invocation to detect a plateaued diff. If every route's `diff_pct` moved less than 0.5pp from the prior run, the output payload includes `"stuck": true` plus a `stuck_reason` string suggesting three remediations (raise `maxDiffPct`, add masks, or accept the baseline). The evaluator agent reads this flag and pauses the build loop rather than asking the developer for another micro-edit cycle — the failure mode the flag exists to break is "agent burns N cycles trying to push 6.5% diff under a 2% threshold by tweaking seed data".
 
+#### Auth-protected routes (`storageStatePath`)
+
+Most real apps redirect anonymous requests to `/login`. Without an authenticated browser context, every `actual`-side screenshot would just be the login page — and `diff_pct` against the real prototype would spike to 80–95% for every protected route. Since v0.11.0, `pixelDiff` supports a `storageStatePath` field (or `--storage-state <path>` on the CLI, which overrides the field):
+
+```json
+"pixelDiff": {
+  "enabled": true,
+  "storageStatePath": "pipeline/storage-state.json",
+  ...
+}
+```
+
+This is a [Playwright storageState JSON](https://playwright.dev/docs/auth) (cookies + localStorage). It's applied **only to the actual-side screenshot** — the reference side (designs/*.html on the static designs server) doesn't need auth, and injecting cookies into a same-origin redirect chain that doesn't expect them causes its own problems. If the path is set but the file doesn't exist when pixel-diff runs, the script skips with a clear reason rather than silently screenshotting the login page.
+
+The typical pattern is a project-local wrapper script (e.g. `scripts/run-pixel-diff.mjs`) that:
+1. Reads dev-server URL from `pipeline/dev-server-url`
+2. Spins up a Playwright browser, runs the project's login flow, writes `await context.storageState({ path: 'pipeline/storage-state.json' })`
+3. Spawns `node .claude/scripts/pixel-diff.mjs --storage-state pipeline/storage-state.json --out pipeline/feedback` and forwards stdout/exit
+
+The wrapper handles the project-specific bits (credentials, login form selectors, dynamic-route ID resolution); the upstream `pixel-diff.mjs` consumes the resulting storage state. This keeps specsmith free of host-project auth specifics while making auth-protected diffs a first-class concern.
+
 ### Closing the loop between /design and /build
 
 The pipeline is `…/plan → /tasks → /design → /build`, and `/design` runs *after* `/tasks`. That order means the designer can introduce regions the plan didn't enumerate (e.g. a summary card the planner left out) and they'd silently disappear from `/build`'s scope unless `/tasks` knows about them.

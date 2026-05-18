@@ -45,6 +45,12 @@ const DEFAULTS = {
   masks: [],
   waitFor: null,
   routes: null,
+  // Path to a Playwright storageState JSON (cookies + localStorage) applied
+  // only to the actual-side screenshot. Use when routes are auth-protected:
+  // a project-local wrapper captures the state via a login flow and either
+  // sets this field or passes --storage-state at the CLI (which wins).
+  // The reference side (designs/*.html) is always loaded without auth.
+  storageStatePath: null,
 };
 
 // If the same per-route diff_pct moves less than this many percentage points
@@ -53,16 +59,20 @@ const DEFAULTS = {
 const STUCK_DELTA_PP = 0.5;
 
 function parseArgs(argv) {
-  const out = { outDir: DEFAULT_OUT_DIR, routesOverride: null };
+  const out = { outDir: DEFAULT_OUT_DIR, routesOverride: null, storageStatePath: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out') out.outDir = resolve(CWD, argv[++i]);
     else if (a === '--routes') out.routesOverride = JSON.parse(argv[++i]);
+    else if (a === '--storage-state') out.storageStatePath = resolve(CWD, argv[++i]);
     else if (a === '-h' || a === '--help') {
       process.stdout.write(
         'pixel-diff: visual regression check vs designs/<slug>.html prototypes\n' +
-        'Usage: pixel-diff.mjs [--out <dir>] [--routes <json>]\n' +
-        'Config: .claude/conventions.json -> pixelDiff block\n'
+        'Usage: pixel-diff.mjs [--out <dir>] [--routes <json>] [--storage-state <path>]\n' +
+        'Config: .claude/conventions.json -> pixelDiff block\n' +
+        '  --storage-state <path>  Playwright storageState JSON; applied only\n' +
+        '                          to the actual-side screenshot. Overrides\n' +
+        '                          pixelDiff.storageStatePath if both set.\n'
       );
       process.exit(0);
     }
@@ -215,8 +225,11 @@ async function loadDeps() {
   }
 }
 
-async function screenshotPage(browser, url, viewport, masks, waitFor) {
-  const ctx = await browser.newContext({ viewport });
+async function screenshotPage(browser, url, viewport, masks, waitFor, storageStatePath) {
+  const ctx = await browser.newContext({
+    viewport,
+    ...(storageStatePath ? { storageState: storageStatePath } : {}),
+  });
   const page = await ctx.newPage();
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
@@ -261,8 +274,12 @@ function cropToCommonHeight(PNG, refBuf, actBuf) {
 async function diffPair(deps, pair, cfg, viewport, outDir, browser) {
   const refUrl = pair._refUrl;
   const actUrl = pair._actUrl;
-  const refBuf = await screenshotPage(browser, refUrl, viewport, cfg.masks, cfg.waitFor);
-  const actBuf = await screenshotPage(browser, actUrl, viewport, cfg.masks, cfg.waitFor);
+  // Reference side (static design HTML) is always loaded without auth — the
+  // designs server has no session and adding storageState would inject stale
+  // cookies into a same-origin redirect chain that doesn't need them.
+  // Only the actual (dev-server) shot uses storageState.
+  const refBuf = await screenshotPage(browser, refUrl, viewport, cfg.masks, cfg.waitFor, null);
+  const actBuf = await screenshotPage(browser, actUrl, viewport, cfg.masks, cfg.waitFor, cfg.storageStatePath);
   const { PNG, pixelmatch } = deps;
   const { ref, act, width, height } = cropToCommonHeight(PNG, refBuf, actBuf);
   const diff = new PNG({ width, height });
@@ -316,6 +333,17 @@ async function main() {
   }
   if (cfg.enabled === false) {
     emit({ verdict: 'skip', reason: 'pixelDiff.enabled is false' }, 0);
+  }
+
+  // CLI --storage-state overrides pixelDiff.storageStatePath. Wrappers that
+  // capture a session at runtime (login flow → write to a temp path) pass
+  // via CLI; projects with a stable cookie file use the config field.
+  if (args.storageStatePath) cfg.storageStatePath = args.storageStatePath;
+  if (cfg.storageStatePath && !existsSync(cfg.storageStatePath)) {
+    emit({
+      verdict: 'skip',
+      reason: `storageStatePath does not exist: ${cfg.storageStatePath}. The wrapper that captures auth needs to write the file before pixel-diff runs.`,
+    }, 0);
   }
 
   const designsDir = join(CWD, 'designs');
