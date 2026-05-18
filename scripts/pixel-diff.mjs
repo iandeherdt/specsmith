@@ -167,15 +167,54 @@ function loadPriorRun(outDir) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
 }
 
+// Match a routeOverrides key with `[param]` placeholders against a concrete
+// route. Each `[anything]` segment consumes exactly one path segment (no
+// slashes). Returns false for keys without any `[...]` (those should be
+// tried as direct-match by the caller, which is more efficient).
+function routeKeyMatches(pattern, route) {
+  if (!pattern.includes('[')) return false;
+  // Escape regex specials, then replace [...] with a single-segment wildcard.
+  const escaped = pattern.replace(/[.+*?^${}()|\\]/g, '\\$&');
+  const regexSource = '^' + escaped.replace(/\[[^\]]+\]/g, '[^/]+') + '$';
+  return new RegExp(regexSource).test(route);
+}
+
 // Pure function — exported for unit tests. Resolves the per-route maxDiffPct,
 // falling back to the global cfg.maxDiffPct when no override is defined.
 // Lets a project tighten the global threshold for the routes that converge
 // cleanly while accepting a higher floor on one or two structurally noisy
 // pages — instead of loosening the global for everyone.
+//
+// Override key matching (v0.14.0+):
+// 1. Direct string match wins over any pattern (most specific).
+// 2. Pattern match: keys containing `[name]` segments behave as wildcards;
+//    each `[name]` consumes one path segment. Among multiple matching
+//    patterns, the one with the FEWEST `[name]` segments wins (most literal
+//    segments = most specific); ties broken alphabetically.
+// This means a wrapper that resolves `/contracts/[id]/indexation` to a
+// concrete UUID at runtime no longer needs to mutate the conventions.json
+// override key — the parametric form matches the resolved route directly.
 export function effectiveMaxDiffPct(cfg, routeKey) {
-  const ov = cfg?.routeOverrides?.[routeKey];
-  if (ov && typeof ov.maxDiffPct === 'number') return ov.maxDiffPct;
-  return cfg?.maxDiffPct;
+  const overrides = cfg?.routeOverrides;
+  if (!overrides) return cfg?.maxDiffPct;
+
+  const direct = overrides[routeKey];
+  if (direct && typeof direct.maxDiffPct === 'number') return direct.maxDiffPct;
+
+  let best = null;
+  for (const key of Object.keys(overrides)) {
+    if (!key.includes('[')) continue;
+    const v = overrides[key];
+    if (!v || typeof v.maxDiffPct !== 'number') continue;
+    if (!routeKeyMatches(key, routeKey)) continue;
+    const params = (key.match(/\[[^\]]+\]/g) || []).length;
+    if (!best || params < best.params || (params === best.params && key.localeCompare(best.key) < 0)) {
+      best = { key, params, maxDiffPct: v.maxDiffPct };
+    }
+  }
+  if (best) return best.maxDiffPct;
+
+  return cfg.maxDiffPct;
 }
 
 // Pure function — exported for unit tests. Walks a pixelmatch-style

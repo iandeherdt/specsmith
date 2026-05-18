@@ -216,5 +216,61 @@ test('effectiveMaxDiffPct: empty cfg → undefined fallthrough', () => {
   assert.strictEqual(r, undefined);
 });
 
+// ─── effectiveMaxDiffPct: wildcard / [param] pattern matching (v0.14.0+) ───
+
+test('effectiveMaxDiffPct: [id] pattern matches a resolved UUID', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: { '/contracts/[id]/indexation': { maxDiffPct: 11.0 } },
+  }, '/contracts/abc-123-def/indexation');
+  assert.strictEqual(r, 11.0);
+});
+
+test('effectiveMaxDiffPct: pattern does not match a different suffix', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: { '/contracts/[id]/indexation': { maxDiffPct: 11.0 } },
+  }, '/contracts/abc-123/details');
+  assert.strictEqual(r, 7.0);
+});
+
+test('effectiveMaxDiffPct: [param] matches exactly one segment (no slashes)', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: { '/contracts/[id]': { maxDiffPct: 9.0 } },
+  }, '/contracts/abc/extra');
+  assert.strictEqual(r, 7.0);
+});
+
+test('effectiveMaxDiffPct: direct match wins over pattern match', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: {
+      '/contracts/[id]/indexation': { maxDiffPct: 11.0 },
+      '/contracts/abc-123/indexation': { maxDiffPct: 5.0 },
+    },
+  }, '/contracts/abc-123/indexation');
+  assert.strictEqual(r, 5.0);
+});
+
+test('effectiveMaxDiffPct: more specific pattern wins (fewest [params])', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: {
+      '/contracts/[id]/[child]': { maxDiffPct: 20.0 },
+      '/contracts/[id]/indexation': { maxDiffPct: 11.0 },
+    },
+  }, '/contracts/abc/indexation');
+  assert.strictEqual(r, 11.0);
+});
+
+test('effectiveMaxDiffPct: multiple [params] in one key resolve correctly', () => {
+  const r = effectiveMaxDiffPct({
+    maxDiffPct: 7.0,
+    routeOverrides: { '/projects/[projectId]/tasks/[taskId]': { maxDiffPct: 13.0 } },
+  }, '/projects/p1/tasks/t1');
+  assert.strictEqual(r, 13.0);
+});
+
 console.log(`\n${passed} passed, ${failed} failed.`);
 if (failed > 0) process.exit(1);

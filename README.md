@@ -142,7 +142,7 @@ When one route has irreducible drift the others don't — a dense detail page wi
 }
 ```
 
-Matching is by exact route key (as it appears in `routes`, or the default `/<slug>` for `designs/<slug>.html`). The output JSON tags overridden routes with `max_diff_pct_source: "routeOverride"` so the evaluator surfaces them explicitly. Keep the override list small — every entry is a noise floor that has to be remembered when reading future diffs.
+Matching is direct-first, then pattern: keys may contain `[param]` wildcards (v0.14.0+) where each `[anything]` consumes one path segment. So `/contracts/[id]/indexation` matches a wrapper-resolved `/contracts/abc-123/indexation` directly — no need for the wrapper to substitute the key into a temp conventions.json. Direct string match always wins over a pattern; among multiple matching patterns, the one with the fewest `[param]` segments wins (most literal = most specific). The output JSON tags overridden routes with `max_diff_pct_source: "routeOverride"`. Keep the override list small — every entry is a noise floor that has to be remembered when reading future diffs.
 
 #### Auth-wrapper pattern
 

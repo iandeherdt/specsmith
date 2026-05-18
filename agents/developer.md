@@ -311,6 +311,34 @@ to any tracking files.
   `cat /proc/<pid>/cmdline` (or `ps -p <pid> -o args=`) shows the actual
   current command rather than historic argv from a parent shell snapshot.
   Don't loop on phantom PIDs.
+- **`process.exit()` inside `try` / `finally`**: calling `process.exit()` from
+  inside a `try` block can short-circuit a `finally` block that's supposed to
+  restore state (lock file, mutated config, env var, temp directory, watcher
+  cleanup). Node's exact behaviour depends on version and what's in the
+  finally, but the failure mode is consistent: your `finally` doesn't run and
+  the world is left mid-mutation. Pattern: capture the exit code into a
+  variable inside `try`, let `finally` run normally, then call
+  `process.exit(code)` AFTER both blocks have completed.
+  ```js
+  // BAD — finally may not run, mutation leaks
+  try {
+    mutateConfig();
+    const code = await spawnChild();
+    process.exit(code);                    // ⚠ skips finally
+  } finally {
+    restoreConfig();
+  }
+
+  // GOOD — finally always runs, exit happens after
+  let code = 0;
+  try {
+    mutateConfig();
+    code = await spawnChild();
+  } finally {
+    restoreConfig();
+  }
+  process.exit(code);
+  ```
 - **JSX comment placement**: JSX braces `{/* ... */}` are only valid INSIDE
   JSX (between elements or as siblings of children), NOT in the whitespace
   zone right after `return (` and before the root element. Putting them
