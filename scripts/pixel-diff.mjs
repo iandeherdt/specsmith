@@ -74,20 +74,24 @@ const DEFAULTS = {
 };
 
 function parseArgs(argv) {
-  const out = { outDir: DEFAULT_OUT_DIR, routesOverride: null, storageStatePath: null };
+  const out = { outDir: DEFAULT_OUT_DIR, routesOverride: null, storageStatePath: null, onlyRoutes: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out') out.outDir = resolve(CWD, argv[++i]);
     else if (a === '--routes') out.routesOverride = JSON.parse(argv[++i]);
     else if (a === '--storage-state') out.storageStatePath = resolve(CWD, argv[++i]);
+    else if (a === '--only-route') out.onlyRoutes.push(argv[++i]);
     else if (a === '-h' || a === '--help') {
       process.stdout.write(
         'pixel-diff: visual regression check vs designs/<slug>.html prototypes\n' +
         'Usage: pixel-diff.mjs [--out <dir>] [--routes <json>] [--storage-state <path>]\n' +
+        '                     [--only-route <route> [--only-route <route> ...]]\n' +
         'Config: .claude/conventions.json -> pixelDiff block\n' +
         '  --storage-state <path>  Playwright storageState JSON; applied only\n' +
         '                          to the actual-side screenshot. Overrides\n' +
-        '                          pixelDiff.storageStatePath if both set.\n'
+        '                          pixelDiff.storageStatePath if both set.\n' +
+        '  --only-route <route>    Restrict to specific routes (repeatable).\n' +
+        '                          Typically piped from routes-to-diff.mjs.\n'
       );
       process.exit(0);
     }
@@ -304,7 +308,20 @@ async function main() {
     }, 0);
   }
 
-  const routes = args.routesOverride ?? cfg.routes ?? discoverRoutes();
+  let routes = args.routesOverride ?? cfg.routes ?? discoverRoutes();
+  let scoped = false;
+  if (args.onlyRoutes && args.onlyRoutes.length) {
+    const allow = new Set(args.onlyRoutes);
+    routes = routes.filter((r) => allow.has(r.route));
+    scoped = true;
+    if (!routes.length) {
+      emit({
+        verdict: 'skip',
+        reason: `no configured routes match --only-route filter ${JSON.stringify(args.onlyRoutes)}`,
+        scoped: true,
+      }, 0);
+    }
+  }
   if (!routes.length) {
     emit({ verdict: 'skip', reason: 'no design/route pairs to compare (no designs/*.html and no explicit routes)' }, 0);
   }
@@ -362,6 +379,7 @@ async function main() {
   const payload = {
     verdict,
     summary,
+    ...(scoped ? { scoped: true, scoped_routes: args.onlyRoutes } : {}),
     ...(stuckInfo.allStuck
       ? {
           stuck: true,

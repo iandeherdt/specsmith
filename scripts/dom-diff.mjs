@@ -46,17 +46,21 @@ const DEFAULTS = {
 };
 
 function parseArgs(argv) {
-  const out = { outDir: DEFAULT_OUT_DIR, routesOverride: null, storageStatePath: null };
+  const out = { outDir: DEFAULT_OUT_DIR, routesOverride: null, storageStatePath: null, onlyRoutes: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out') out.outDir = resolve(CWD, argv[++i]);
     else if (a === '--routes') out.routesOverride = JSON.parse(argv[++i]);
     else if (a === '--storage-state') out.storageStatePath = resolve(CWD, argv[++i]);
+    else if (a === '--only-route') out.onlyRoutes.push(argv[++i]);
     else if (a === '-h' || a === '--help') {
       process.stdout.write(
         'dom-diff: structural / textual diff vs designs/<slug>.html prototypes\n' +
         'Usage: dom-diff.mjs [--out <dir>] [--routes <json>] [--storage-state <path>]\n' +
-        'Config: .claude/conventions.json -> domDiff block\n'
+        '                   [--only-route <route> [--only-route <route> ...]]\n' +
+        'Config: .claude/conventions.json -> domDiff block\n' +
+        '  --only-route <route>  Restrict to specific routes (repeatable).\n' +
+        '                        Typically piped from routes-to-diff.mjs.\n'
       );
       process.exit(0);
     }
@@ -282,7 +286,20 @@ async function main() {
     pixelDiffRoutes: cfg._pixelDiffRoutes,
     discoveredFn: discoverRoutes,
   });
-  const routes = resolved.routes;
+  let routes = resolved.routes;
+  let scoped = false;
+  if (args.onlyRoutes && args.onlyRoutes.length) {
+    const allow = new Set(args.onlyRoutes);
+    routes = routes.filter((r) => allow.has(r.route));
+    scoped = true;
+    if (!routes.length) {
+      emit({
+        verdict: 'skip',
+        reason: `no configured routes match --only-route filter ${JSON.stringify(args.onlyRoutes)}`,
+        scoped: true,
+      }, 0);
+    }
+  }
   if (!routes.length) {
     emit({ verdict: 'skip', reason: 'no design/route pairs to compare' }, 0);
   }
@@ -332,6 +349,7 @@ async function main() {
     verdict,
     summary: `${results.length - failed.length}/${results.length} routes passed structural diff (${totalDiffs} total differences after normalisation)`,
     routes_source: resolved.source,
+    ...(scoped ? { scoped: true, scoped_routes: args.onlyRoutes } : {}),
     routes: results,
   };
 
