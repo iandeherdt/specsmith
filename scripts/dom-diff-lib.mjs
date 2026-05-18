@@ -85,6 +85,25 @@ export function diffOrderedLists(before, after) {
 //     landmarkNames: ['sidebar', 'main', ...],
 //   }
 // Text inside lists is already normalised by the extractor.
+// Resolve which (design, route) pairs dom-diff should compare. Priority:
+//   1. an explicit CLI override (rare; mostly for tests)
+//   2. domDiff.routes — when the user has hand-tuned dom-diff's own route list
+//   3. pixelDiff.routes — when domDiff.routes is null but pixelDiff already
+//      knows the slug→route mapping. The two tools target the same prototype
+//      pairs, so making the user duplicate the array is footgun-prone: the
+//      first /build after an `npx specsmith update` would happily hit
+//      `/property-inspections` (404) instead of `/properties/[id]/inspections`,
+//      hang on Playwright timeouts, and report every route as failed.
+//   4. discovered — fall back to pairing designs/<slug>.html with /<slug>
+//      when neither config block has explicit routes.
+export function resolveRoutes({ override, domDiffRoutes, pixelDiffRoutes, discoveredFn }) {
+  if (Array.isArray(override) && override.length) return { source: 'override', routes: override };
+  if (Array.isArray(domDiffRoutes) && domDiffRoutes.length) return { source: 'domDiff.routes', routes: domDiffRoutes };
+  if (Array.isArray(pixelDiffRoutes) && pixelDiffRoutes.length) return { source: 'pixelDiff.routes', routes: pixelDiffRoutes };
+  const discovered = typeof discoveredFn === 'function' ? discoveredFn() : [];
+  return { source: 'discovered', routes: discovered };
+}
+
 export function compareSnapshots(prototype, actual) {
   const diffs = [];
 

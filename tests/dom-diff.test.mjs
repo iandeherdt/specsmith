@@ -3,7 +3,7 @@
 // Playwright installed); the regex set + snapshot diff are pure.
 
 import assert from 'node:assert';
-import { normaliseText, compareSnapshots, diffOrderedLists } from '../scripts/dom-diff-lib.mjs';
+import { normaliseText, compareSnapshots, diffOrderedLists, resolveRoutes } from '../scripts/dom-diff-lib.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -180,6 +180,78 @@ test('diffOrderedLists: extra in after', () => {
 test('diffOrderedLists: missing in after', () => {
   const r = diffOrderedLists(['a', 'b', 'c'], ['a', 'c']);
   assert.deepStrictEqual(r, { missing: ['b'], extra: [] });
+});
+
+// ─── resolveRoutes ────────────────────────────────────────────────────
+
+const PAIRS_DOM = [{ design: 'designs/a.html', route: '/from-dom' }];
+const PAIRS_PIXEL = [{ design: 'designs/a.html', route: '/from-pixel' }];
+const PAIRS_OVERRIDE = [{ design: 'designs/a.html', route: '/from-override' }];
+
+test('resolveRoutes: override wins over everything', () => {
+  const r = resolveRoutes({
+    override: PAIRS_OVERRIDE,
+    domDiffRoutes: PAIRS_DOM,
+    pixelDiffRoutes: PAIRS_PIXEL,
+    discoveredFn: () => [],
+  });
+  assert.strictEqual(r.source, 'override');
+  assert.deepStrictEqual(r.routes, PAIRS_OVERRIDE);
+});
+
+test('resolveRoutes: domDiff.routes wins over pixelDiff.routes when set', () => {
+  const r = resolveRoutes({
+    override: null,
+    domDiffRoutes: PAIRS_DOM,
+    pixelDiffRoutes: PAIRS_PIXEL,
+    discoveredFn: () => [],
+  });
+  assert.strictEqual(r.source, 'domDiff.routes');
+  assert.deepStrictEqual(r.routes, PAIRS_DOM);
+});
+
+test('resolveRoutes: falls back to pixelDiff.routes when domDiff.routes is null', () => {
+  const r = resolveRoutes({
+    override: null,
+    domDiffRoutes: null,
+    pixelDiffRoutes: PAIRS_PIXEL,
+    discoveredFn: () => [],
+  });
+  assert.strictEqual(r.source, 'pixelDiff.routes');
+  assert.deepStrictEqual(r.routes, PAIRS_PIXEL);
+});
+
+test('resolveRoutes: falls back to pixelDiff.routes when domDiff.routes is empty array', () => {
+  const r = resolveRoutes({
+    override: null,
+    domDiffRoutes: [],
+    pixelDiffRoutes: PAIRS_PIXEL,
+    discoveredFn: () => [],
+  });
+  assert.strictEqual(r.source, 'pixelDiff.routes');
+});
+
+test('resolveRoutes: discovered when both are null', () => {
+  const discovered = [{ design: 'designs/d.html', route: '/d' }];
+  const r = resolveRoutes({
+    override: null,
+    domDiffRoutes: null,
+    pixelDiffRoutes: null,
+    discoveredFn: () => discovered,
+  });
+  assert.strictEqual(r.source, 'discovered');
+  assert.deepStrictEqual(r.routes, discovered);
+});
+
+test('resolveRoutes: discovered returns empty when discoveredFn returns empty', () => {
+  const r = resolveRoutes({
+    override: null,
+    domDiffRoutes: null,
+    pixelDiffRoutes: null,
+    discoveredFn: () => [],
+  });
+  assert.strictEqual(r.source, 'discovered');
+  assert.deepStrictEqual(r.routes, []);
 });
 
 console.log(`\n${passed} passed, ${failed} failed.`);

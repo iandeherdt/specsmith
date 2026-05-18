@@ -62,6 +62,7 @@
     "viewport": "1280x800",
     "waitFor": null,
     "routes": null,
+    "_routesNote": "Same shape as pixelDiff.routes. When null, dom-diff falls back to pixelDiff.routes (since v0.19.1) so you don't have to duplicate the mapping — the two tools target the same prototype pairs. If neither is set, the script pairs each designs/<slug>.html with /<slug>; that fallback breaks when filenames don't match nested route paths (e.g. `settings-sharepoint.html` vs `/settings/sharepoint`), so prefer letting pixelDiff.routes drive both.",
     "routeOverrides": null,
     "storageStatePath": null,
     "maxDifferences": 0,

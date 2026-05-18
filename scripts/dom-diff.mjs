@@ -23,7 +23,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
-import { compareSnapshots, normaliseText } from './dom-diff-lib.mjs';
+import { compareSnapshots, normaliseText, resolveRoutes } from './dom-diff-lib.mjs';
 
 const CWD = process.cwd();
 const CONVENTIONS_PATH = join(CWD, '.claude', 'conventions.json');
@@ -71,7 +71,16 @@ function loadConfig() {
   let parsed;
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed.domDiff !== 'object' || parsed.domDiff === null) return null;
-  return { ...DEFAULTS, ...parsed.domDiff };
+  // Stash pixelDiff.routes so we can fall back to it when domDiff.routes
+  // is null. The two tools target the same prototype pairs; making the
+  // user duplicate the array is footgun-prone.
+  return {
+    ...DEFAULTS,
+    ...parsed.domDiff,
+    _pixelDiffRoutes: parsed.pixelDiff && Array.isArray(parsed.pixelDiff.routes)
+      ? parsed.pixelDiff.routes
+      : null,
+  };
 }
 
 function parseViewport(s) {
@@ -267,7 +276,13 @@ async function main() {
     }, 0);
   }
 
-  const routes = args.routesOverride ?? cfg.routes ?? discoverRoutes();
+  const resolved = resolveRoutes({
+    override: args.routesOverride,
+    domDiffRoutes: cfg.routes,
+    pixelDiffRoutes: cfg._pixelDiffRoutes,
+    discoveredFn: discoverRoutes,
+  });
+  const routes = resolved.routes;
   if (!routes.length) {
     emit({ verdict: 'skip', reason: 'no design/route pairs to compare' }, 0);
   }
@@ -304,6 +319,7 @@ async function main() {
   const payload = {
     verdict,
     summary: `${results.length - failed.length}/${results.length} routes passed structural diff (${totalDiffs} total differences after normalisation)`,
+    routes_source: resolved.source,
     routes: results,
   };
 
