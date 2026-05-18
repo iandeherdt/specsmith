@@ -100,19 +100,22 @@ bash, then point Playwright at it.
 
 **0.1 — Start the dev server (bash):**
 
-Use the pipeline helper. It backgrounds the dev command, parses the bound
-URL out of the server's startup output, and writes it to
-`pipeline/dev-server-url`. This handles dev-server port fallback (Next/Vite
-auto-jump to :3001 when :3000 is taken) without you having to guess or
-probe ports.
+Use the idempotent helper. It reads `pipeline/dev-server-url`, curls it,
+and only starts a new server if the URL is missing or unreachable. This
+handles dev-server port fallback (Next/Vite auto-jump to :3001 when :3000
+is taken) without you having to guess or probe ports — AND it doesn't
+needlessly restart a server that the orchestrator's previous evaluator
+cycle already started.
 
 ```bash
-DEV_URL=$(node .claude/scripts/start-dev-server.mjs npm run dev)
+node .claude/scripts/ensure-servers.mjs
+DEV_URL=$(cat pipeline/dev-server-url)
 echo "Dev server: $DEV_URL"
 ```
 
 If `npm run dev` is not the right command on this project, check
-`pipeline/environment-facts.md` for the recorded dev command.
+`pipeline/environment-facts.md` for the recorded dev command and pass it
+as `--dev-cmd='<cmd>'`.
 
 **Hard rules for this step:**
 - ONE dev server. ONE URL. The helper is idempotent: re-running it while
@@ -356,11 +359,12 @@ For each acceptance criterion in this phase, derive the route from its Given/Whe
 
 If `designs/coverage.md` exists (written by the designing-interfaces agent), use it as the authoritative list of regions per prototype. Bullets like `` - `<ComponentName>` — <purpose> `` enumerate the top-level regions you must verify.
 
-1. Start the designs server via the pipeline helper, which records the URL to a separate file so it doesn't collide with the dev-server URL:
+1. Ensure the designs server is up. The helper is idempotent — it reads `pipeline/designs-server-url`, curls it, and only starts a new server if the URL is missing or unreachable. Designs URL is kept separate from the dev URL.
    ```bash
-   DESIGNS_URL=$(node .claude/scripts/start-dev-server.mjs --url-file=pipeline/designs-server-url --log=pipeline/designs-server.log -- npx serve designs -l 3100)
+   node .claude/scripts/ensure-servers.mjs --designs
+   DESIGNS_URL=$(cat pipeline/designs-server-url)
    ```
-2. **Run BOTH design-fidelity diffs** (primary path):
+2. **Run BOTH design-fidelity diffs** (primary path). Each writes its JSON to disk — read the disk file with the `show-*` helpers, do NOT capture the stdout into a shell variable and parse it inline.
    ```bash
    node .claude/scripts/pixel-diff.mjs --out pipeline/feedback
    node .claude/scripts/dom-diff.mjs --out pipeline/feedback
@@ -372,13 +376,14 @@ If `designs/coverage.md` exists (written by the designing-interfaces agent), use
 
    The pixel-diff script reads the `pixelDiff` block from `.claude/conventions.json`, pairs each `designs/*.html` with its matching route on the dev server, opens both in headless Chromium at the same viewport, diffs them with pixelmatch, and writes a structured JSON report to stdout plus three PNGs per route to `pipeline/feedback/` (reference, actual, diff overlay). The dom-diff script reads the `domDiff` block, takes the same routes, extracts structured snapshots, and writes a flat list of structural differences to `pipeline/feedback/dom-diff.json`.
 
-   Capture and parse both JSON outputs:
+   Both scripts write their JSON output directly to `pipeline/feedback/` — you do **not** need to capture stdout. Read the disk file via the helpers:
    ```bash
-   PIXEL_DIFF_JSON=$(node .claude/scripts/pixel-diff.mjs --out pipeline/feedback)
-   echo "$PIXEL_DIFF_JSON" > pipeline/feedback/pixel-diff.json
-   DOM_DIFF_JSON=$(node .claude/scripts/dom-diff.mjs --out pipeline/feedback)
-   # dom-diff also writes pipeline/feedback/dom-diff.json itself.
+   node .claude/scripts/show-pixel-diff.mjs              # full summary
+   node .claude/scripts/show-pixel-diff.mjs --routes-failed   # only failed routes
+   node .claude/scripts/show-dom-diff.mjs                # full summary
+   node .claude/scripts/show-dom-diff.mjs --routes-failed     # only failed routes
    ```
+   The orchestrator-discipline guard does NOT block these helpers — they're read-only summaries of the JSON the evaluator just wrote. Use them in your own analysis too if a one-shot summary is enough; reach for `cat pipeline/feedback/pixel-diff.json | jq` only when you need a specific field the summary doesn't surface.
 
    **For each route, combine the two signals:**
    - If `dom-diff` reports `differences` for a route, those are concrete, actionable carryovers. Each `{ type, value }` or `{ type, header, tableIndex }` becomes a `[High]` design-fidelity issue: "h1 changed from `Betalingsoverzicht` to `Betalingen`", "table column `TRANSACTIE` missing", "nav label `Afmelden` missing", "landmark `sidebar` missing". The developer can fix each one individually — no PNG-eyeballing required.

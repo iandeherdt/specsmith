@@ -23,6 +23,19 @@ const STATE_WIPE_RE = /\brm\s+-rf?\s+\S*(pglite|\.next|node_modules|data\/)/;
 const STATE_WIPE_WINDOW_MS = 30 * 60 * 1000;
 const STATE_WIPE_THRESHOLD = 2; // i.e. this would be the 3rd
 
+// Long inline scripts in ANY interpreter. Agents reach for `python3 -c '...'`,
+// `perl -e '...'`, `ruby -e '...'`, `php -r '...'` to dodge guards and to
+// "just one more parse" their way through diff output instead of writing a
+// proper helper script. The threshold (LONG_INLINE_CHARS) is a heuristic:
+// short one-liners (`python3 -c 'import sys; print(sys.argv)'`) are fine.
+// Anything that wraps into a 200-char blob of JSON-parsing or AST-walking
+// belongs in a `.mjs` / `.py` / `.pl` file the user can read, version, and
+// re-run. Caught in audit 2026-05-19T02-31: orchestrator pasted a 1.2 KB
+// Python script as `python3 -c '...'` to read pixel-diff.json, when a
+// 30-line helper script already existed for that purpose.
+const LONG_INLINE_RE = /\b(python3?|node|perl|ruby|php|deno|bun)\s+(?:-[a-zA-Z]\s+)*-(?:e|c|r)\s+(["'])([\s\S]+?)\2/;
+const LONG_INLINE_CHARS = 200;
+
 function readStdin() {
   try { return readFileSync(0, 'utf8'); } catch { return ''; }
 }
@@ -199,7 +212,47 @@ function main() {
     }
   }
 
-  // Rule 2: repeated state wipes of the same path.
+  // Rule 2: a long inline script in any interpreter. Wrapping a 1 KB Python
+  // parse into `python3 -c '...'` reaches the same "I'm doing work that
+  // belongs in a helper" failure mode as the node -e bypass we already
+  // unwrap above — but in a language the unwrap regex doesn't speak. Treat
+  // length, not language, as the signal.
+  {
+    const m = cmd.match(LONG_INLINE_RE);
+    if (m && m[3] && m[3].length >= LONG_INLINE_CHARS) {
+      const interp = m[1];
+      const inner = m[3];
+      deny(
+        `Refusing this command — long inline ${interp} script (${inner.length} chars).\n` +
+        `\n` +
+        `Inline scripts that long should be a versioned helper file, not\n` +
+        `a one-shot \`${interp} -e/-c '...'\` blob. Reasons:\n` +
+        `  - You can't read it back in two days when something breaks.\n` +
+        `  - There's no way to test it before running it.\n` +
+        `  - Subagents and humans both write more careful code into a file.\n` +
+        `  - In /build runs, this pattern is how orchestrators end up doing\n` +
+        `    the developer's work inline — see Constitution Principle VIII.\n` +
+        `\n` +
+        `Do this instead:\n` +
+        `  1. Save the script to \`.claude/scripts/<name>.mjs\` (or .py / .pl /\n` +
+        `     .rb depending on interpreter). If the work is ad-hoc and you\n` +
+        `     don't want to keep it, put it under \`pipeline/scratch/\` —\n` +
+        `     gitignored by default in specsmith projects.\n` +
+        `  2. Run it with \`${interp} <path>\`. The output is identical, the\n` +
+        `     intent is grep-able, and the next session can re-use it.\n` +
+        `\n` +
+        `For reading pixel-diff / dom-diff output specifically, the helpers\n` +
+        `already exist — don't re-implement them inline:\n` +
+        `  node .claude/scripts/show-pixel-diff.mjs\n` +
+        `  node .claude/scripts/show-dom-diff.mjs\n` +
+        `\n` +
+        `If you genuinely need a long inline script (rare), split it into\n` +
+        `discrete short Bash steps the user can audit one at a time.`
+      );
+    }
+  }
+
+  // Rule 3: repeated state wipes of the same path.
   if (STATE_WIPE_RE.test(cmd)) {
     const prior = countRecentWipes(events, cmd);
     if (prior >= STATE_WIPE_THRESHOLD) {

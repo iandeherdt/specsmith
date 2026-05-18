@@ -126,6 +126,35 @@ If a slice fails (developer reports a blocker), stop and report; do not push on 
 
 Skip this step when `UNCHECKED <= $SLICE_THRESHOLD`. The threshold is tunable per-project by setting `$SLICE_THRESHOLD` before invoking `/build`.
 
+### Dispatch lock lifecycle (every Agent call)
+
+Inside an active /build run the **`guard-orchestrator-discipline.mjs`** hook (installed by default since v0.19.0) refuses Bash invocations of dev/designs servers, `pixel-diff.mjs`, `dom-diff.mjs`, and the `run-*` wrappers from the orchestrator. It also refuses Edit/Write on `pipeline/dev-server-url` and `pipeline/designs-server-url`. The hook recognises a subagent context via a sentinel file: **`pipeline/dispatch-active.txt`**.
+
+For **every** Agent call you make (developer, evaluator, and any slice dispatch), wrap the call:
+
+```bash
+# Open the dispatch lock — tell the guard the next forbidden tool call
+# comes from a subagent, not from you.
+printf '%s\n' "$(date -u +%FT%TZ) ${SUBAGENT_TYPE}" > pipeline/dispatch-active.txt
+```
+
+…then invoke the Agent tool. After it returns:
+
+```bash
+# Close the lock so the orchestrator is bound by the rules again.
+rm -f pipeline/dispatch-active.txt
+```
+
+The lock has a 30-minute TTL inside the guard — long enough for a slow evaluator, short enough that a stale lock from a crashed run won't permanently disarm the guard. If you forget to open the lock, the subagent's first forbidden tool call is refused with a clear message that names you (the orchestrator) as the cause.
+
+You may run **read-only** helpers without opening the lock:
+
+- `node .claude/scripts/show-pixel-diff.mjs` — prints the verdict, failed routes, and top regions from `pipeline/feedback/pixel-diff.json`.
+- `node .claude/scripts/show-dom-diff.mjs` — same for `pipeline/feedback/dom-diff.json`.
+- `node .claude/scripts/ensure-servers.mjs [--designs]` — idempotent check; only starts a server if its URL marker is missing or unreachable. Calling this from the orchestrator is fine — it's a check, not a re-run.
+
+Do **not** wrap your own `node -e '...'` / `python3 -c '...'` / `perl -e '...'` to extract one field from the JSON. The long-inline-script guard (extended in v0.19.0) refuses interpreter-agnostic blobs over 200 characters with a message pointing here. Use the helpers.
+
 ### Step 1 — Developer
 
 Call the Agent tool with `subagent_type: "developing-features"` and `model: "sonnet"`. The prompt MUST include:
@@ -237,6 +266,7 @@ Verdict: [PASS — moving to next phase / FAIL — retrying with feedback / BLOC
 ## Rules
 
 - **Never implement or evaluate yourself — always delegate.** This is Constitution Principle VIII (Scope Discipline) at the orchestrator level. Once you dispatch a developer or evaluator via the `Agent` tool, your scope is "wait for the return, then route the next step" — not "do the work inline while waiting". Concretely: between an `Agent` dispatch and its return, your ONLY allowed tool calls are read-only ones (Read the dispatched return, Read the feedback file the evaluator just wrote, status snapshots that don't mutate state). If you find yourself reaching for `Edit` / `Write` / `Bash` on source files mid-dispatch, stop. That's the developer's job, not yours. A real failure mode caught in the wild: orchestrator dispatched Slice A, then did Slices A-F's work itself inline, never invoked the evaluator, and committed checkboxes flipped without verification. Don't be that orchestrator.
+- **Never run pixel-diff, dom-diff, or the dev/designs servers yourself.** The orchestrator-discipline guard (installed by default since v0.19.0) refuses those Bash calls outside the dispatch lock. The evaluator runs them — its outputs land on disk at `pipeline/feedback/pixel-diff.json` and `pipeline/feedback/dom-diff.json`. To read them, use `node .claude/scripts/show-pixel-diff.mjs` and `node .claude/scripts/show-dom-diff.mjs`. To check whether a server is up, use `node .claude/scripts/ensure-servers.mjs`. Don't re-implement these checks inline.
 - **Do not edit specsmith tooling paths.** Edits to `.claude/scripts/`, `.claude/agents/`, `.claude/skills/`, `.claude/specsmith/`, or `templates/` are out-of-scope for a feature build per Constitution Principle VIII. The `guard-scope.mjs` hook (installed by default since v0.15.0) will refuse such edits with a clear message. If you need to change specsmith itself, that is a separate spec in the specsmith repository, not a side effect of this build.
 - **Pre-existing convention violations are carryovers, not immediate work.** If `check-conventions.mjs` flags a file that was already over its line cap on `HEAD` (i.e. before this branch existed), record it in the carryover list of the current cycle's feedback file. Do NOT spend the current phase paging through the file and splitting it — that's a separate refactor spec.
 - Each subagent gets fresh context automatically

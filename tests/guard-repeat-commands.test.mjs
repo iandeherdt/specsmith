@@ -151,5 +151,72 @@ function evt(ts, tool, extra = {}) {
   rmSync(cwd, { recursive: true, force: true });
 }
 
+// ── Case 9: long inline python3 -c script → DENY ──
+// Caught in audit 2026-05-19T02-31: orchestrator pasted a 1.2 KB python3 -c
+// blob to read pixel-diff.json. The unwrap regex doesn't speak Python, so
+// we need the length-based rule.
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  // A 250-char inner script — over the 200-char threshold.
+  const inner = 'import json,sys;d=json.load(open("pipeline/feedback/pixel-diff.json"));' +
+                'print(d["verdict"]);' +
+                'print("|".join([r["route"] for r in d["routes"] if r["verdict"]=="fail"]));' +
+                'sys.exit(0 if d["verdict"]!="fail" else 1)';
+  const r = runHook(cwd, 'abcd1234', `python3 -c '${inner}'`);
+  assert(r.status === 2, 'denies long inline python3 -c script');
+  assert(/show-pixel-diff/.test(r.stderr), 'stderr points at show-pixel-diff helper');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 10: short inline python3 -c (< 200 chars) → ALLOW ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  const r = runHook(cwd, 'abcd1234', `python3 -c 'import sys; print(sys.argv)'`);
+  assert(r.status === 0, 'allows short python3 -c one-liners');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 11: long inline perl -e script → DENY ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  const inner = 'use JSON;my$d=decode_json(do{local$/;open my$f,"pipeline/feedback/dom-diff.json";<$f>});' +
+                'print$d->{verdict},"\\n";for my$r(@{$d->{routes}}){print$r->{route}," ",$r->{verdict},"\\n" if $r->{verdict} eq "fail"}';
+  const r = runHook(cwd, 'abcd1234', `perl -e '${inner}'`);
+  assert(r.status === 2, 'denies long inline perl -e script');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 12: long inline ruby -e script → DENY ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  const inner = 'require "json"; ' +
+                'data = JSON.parse(File.read("pipeline/feedback/pixel-diff.json")); ' +
+                'puts data.fetch("verdict"); ' +
+                'data.fetch("routes").each { |r| puts r.fetch("route") + " " + r.fetch("verdict") if r.fetch("verdict") == "fail" }; ' +
+                'exit (data.fetch("verdict") == "fail" ? 1 : 0)';
+  const r = runHook(cwd, 'abcd1234', `ruby -e '${inner}'`);
+  assert(r.status === 2, 'denies long inline ruby -e script');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 13: long inline php -r script → DENY ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  const inner = '$data = json_decode(file_get_contents("pipeline/feedback/pixel-diff.json"), true); ' +
+                'echo $data["verdict"]; ' +
+                'foreach ($data["routes"] as $r) { ' +
+                '  if ($r["verdict"] === "fail") { echo $r["route"] . " " . $r["verdict"]; } ' +
+                '} ' +
+                'exit($data["verdict"] === "fail" ? 1 : 0);';
+  const r = runHook(cwd, 'abcd1234', `php -r '${inner}'`);
+  assert(r.status === 2, 'denies long inline php -r script');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
 console.log(failures === 0 ? '\nAll tests passed.' : `\n${failures} test(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

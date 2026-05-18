@@ -235,6 +235,26 @@ echo ".claude/scripts/pixel-diff.mjs" >> pipeline/scope-waiver.txt
 
 The waiver is per-path; siblings stay blocked. Delete the line once the edit is done. The `SPECSMITH_SCOPE_OVERRIDE` env var (analogous to the repeat-command override) is ignored in hook context for the same reason as `SPECSMITH_GUARD_OVERRIDE` — agents don't get to dodge it.
 
+### Orchestrator discipline (v0.19.0+)
+
+The `/build` skill is an **orchestrator** — its job is to dispatch the developer and evaluator subagents and route between them, not to do the verification work itself. A v0.18-era audit caught the failure mode this guard prevents: the orchestrator dispatched Slice A, then while waiting started the dev server, ran pixel-diff inline, hand-wrote `pipeline/dev-server-url`, parsed the JSON with a 1.2 KB `python3 -c '...'` blob, and never invoked the evaluator. The phase checkboxes got flipped on the orchestrator's word, not the evaluator's.
+
+Since v0.19.0, `scripts/guard-orchestrator-discipline.mjs` is installed as a `PreToolUse` hook on `Bash | Edit | Write | MultiEdit | NotebookEdit`. **Inside an active /build run** (signalled by `pipeline/run-state.md`), and **outside a dispatched subagent context** (signalled by `pipeline/dispatch-active.txt`), it refuses:
+
+- `Bash` invocations that start a dev or designs server (`npm run dev`, `next dev`, `vite`, `npx serve designs`, `pkill -f 'next dev'`).
+- `Bash` invocations of `pixel-diff.mjs`, `dom-diff.mjs`, and their project-local `run-*` wrappers.
+- `Edit` / `Write` on `pipeline/dev-server-url` and `pipeline/designs-server-url` (those are owned by `start-dev-server.mjs`, which writes the *actually-bound* URL parsed from server startup output — hand-writing them creates races and silent fail chains).
+
+The dispatch lock is the `/build` skill's responsibility: write `pipeline/dispatch-active.txt` immediately before every Agent call, delete it after the call returns. The lock has a 30-minute TTL so a crashed run can't permanently disarm the guard. If the orchestrator forgets to open the lock, the subagent's first forbidden tool call gets refused with a message naming the orchestrator as the cause — fast feedback, no silent corruption.
+
+To read the JSON output the evaluator already wrote, the orchestrator uses:
+
+- `node .claude/scripts/show-pixel-diff.mjs [--routes-failed]` — formatted summary from `pipeline/feedback/pixel-diff.json`.
+- `node .claude/scripts/show-dom-diff.mjs [--routes-failed]` — same for `pipeline/feedback/dom-diff.json`.
+- `node .claude/scripts/ensure-servers.mjs [--designs]` — idempotent check; only starts a server if its URL marker is missing or unreachable.
+
+These helpers are read-only and the guard explicitly permits them. As a paired defense, the existing `guard-repeat-commands.mjs` now also refuses **long inline scripts in any interpreter** (`python3 -c '...'`, `perl -e '...'`, `ruby -e '...'`, `php -r '...'`, etc.) — anything over 200 characters trips the rule with a message pointing at the helpers. A versioned helper script is grep-able, testable, and survives across sessions; a `node -e '...'` blob is none of those.
+
 ### Manifest integrity (`specsmith verify`)
 
 ```bash
