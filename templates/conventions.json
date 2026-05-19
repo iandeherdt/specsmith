@@ -69,6 +69,14 @@
       "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",
       "forbiddenPattern": "^(?:function\\s+\\w+\\s*\\(|(?:const|let|var)\\s+\\w+\\s*=\\s*(?:\\([^)]*\\)|\\w+)\\s*=>)",
       "message": "Top-level helper / factory in page.tsx — extract to its own file. Pages should default-export ONE thing (the page component). Sibling declarations like `function propertyRow(p) { return <tr>... }`, `const filterBox = (props) => <div>...</div>`, or `function formatRows(rows) { ... }` belong elsewhere: JSX-returning helpers as components under `src/components/<Name>.tsx`, pure data shapers under `src/lib/<feature>/selectors.ts`, formatters under `src/lib/<feature>/format.ts`. The rule matches lines that start at column 0 with `function <name>(` or `const <name> = (...) =>` — Next.js framework exports (`export default`, `export async function generateMetadata`, `export const dynamic`, etc.) start with `export` and are not caught. Indented declarations inside the page body (hooks, handlers) are also not caught."
+    },
+
+    {
+      "name": "no-inline-types-in-pages",
+      "filesGlob": "app/**/page.{tsx,jsx},src/app/**/page.{tsx,jsx}",
+      "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",
+      "forbiddenPattern": "^(?:export\\s+)?(?:interface\\s+\\w+|type\\s+\\w+\\s*=)",
+      "message": "Inline `interface Foo` / `type Foo = …` in page.tsx — move to a types file. Pages are composition shells, not type definition sites. Conventional homes: `src/types/<domain>.ts` for shared domain types, `src/lib/<feature>/types.ts` for feature-local types, or co-located with the component the type describes once it's extracted (per `no-inline-helpers-in-pages`). The rule matches column-0 `interface Name` or `type Name =` with or without an `export` prefix; `import type { … } from` is NOT matched (it starts with `import`)."
     }
   ],
 

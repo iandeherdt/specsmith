@@ -429,6 +429,52 @@ export const X = () => (
   rmSync(root, { recursive: true, force: true });
 }
 
+// ── Case 17b-types: no-inline-types-in-pages catches inline interface / type ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'no-inline-types-in-pages',
+      filesGlob: 'app/**/page.{tsx,jsx},src/app/**/page.{tsx,jsx}',
+      excludeGlob: '**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx',
+      forbiddenPattern: '^(?:export\\s+)?(?:interface\\s+\\w+|type\\s+\\w+\\s*=)',
+      message: 'Move inline types out of page.tsx',
+    }],
+  });
+  // FLAG: bare interface declaration
+  writeSrc(
+    root,
+    'app/properties/page.tsx',
+    'interface PropertyRowProps { id: string; name: string; }\nexport default function P() { return null; }\n'
+  );
+  // FLAG: type alias
+  writeSrc(
+    root,
+    'app/contracts/page.tsx',
+    'type ContractsPageProps = { params: { id: string } };\nexport default function P({ params }: ContractsPageProps) { return null; }\n'
+  );
+  // FLAG: exported interface (shared type living in the wrong file)
+  writeSrc(
+    root,
+    'app/dashboard/page.tsx',
+    'export interface DashboardCard { title: string; value: number; }\nexport default function P() { return null; }\n'
+  );
+  // PASS: `import type` is not caught (starts with `import`)
+  // PASS: clean page with no top-level types
+  writeSrc(
+    root,
+    'app/clean/page.tsx',
+    'import type { Foo } from "@/types/foo";\nimport { getData } from "@/lib/data";\nexport default async function CleanPage() {\n  const data = await getData<Foo>();\n  return <main>{data.title}</main>;\n}\n'
+  );
+  const r = run(root);
+  assert(r.status === 1, 'rule fires when pages contain inline interfaces / types');
+  assert(/app\/properties\/page\.tsx/.test(r.stderr), 'flags bare interface');
+  assert(/app\/contracts\/page\.tsx/.test(r.stderr), 'flags type alias');
+  assert(/app\/dashboard\/page\.tsx/.test(r.stderr), 'flags exported interface');
+  assert(!/app\/clean\/page\.tsx/.test(r.stderr), 'does NOT flag clean page (import type allowed)');
+  rmSync(root, { recursive: true, force: true });
+}
+
 // ── Case 17c: page-size-cap fires only on page files and at a tighter cap ──
 {
   const root = makeProject();
