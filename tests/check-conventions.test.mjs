@@ -269,7 +269,7 @@ export const X = () => (
       name: 'data-access-pattern',
       filesGlob: '**/*.{ts,tsx}',
       excludeGlob: 'src/lib/**/repository.ts,src/db/**',
-      forbiddenPattern: '\\b(db|drizzle)\\.(query|select|insert|update|delete|from|transaction|execute|with)\\b|\\bprisma\\.\\w+\\.(findUnique|findFirst|findMany|create|createMany|update|updateMany|delete|deleteMany|upsert|count|aggregate|groupBy)\\b|\\bprisma\\.\\$transaction\\b',
+      forbiddenPattern: '\\b(db|drizzle)(?:\\.\\w+)?\\.(query|select|insert|update|delete|from|transaction|execute|with)\\b|\\bprisma\\.\\w+\\.(findUnique|findFirst|findMany|create|createMany|update|updateMany|delete|deleteMany|upsert|count|aggregate|groupBy)\\b|\\bprisma\\.\\$transaction\\b',
       message: 'No direct DB calls outside repository.',
     }],
   });
@@ -279,6 +279,8 @@ export const X = () => (
   writeSrc(root, 'app/users/page.tsx', "import { prisma } from '@/lib/prisma'; const u = await prisma.user.findUnique({ where: { id } });");
   // db.transaction in a route handler: should fire
   writeSrc(root, 'app/api/foo/route.ts', "await db.transaction(async (tx) => {});");
+  // Two-level Drizzle pattern (db.<table>.select) in a component: should fire (v0.20.2 fix)
+  writeSrc(root, 'app/properties/page.tsx', "import { db } from '@/lib/db/client'; const rows = await db.properties.select();");
   // Inside repository: should NOT fire (excluded)
   writeSrc(root, 'src/lib/users/repository.ts', "import { db } from '@/db'; export const getUser = (id: string) => db.select().from(users).where(eq(users.id, id));");
   const r = run(root);
@@ -286,6 +288,7 @@ export const X = () => (
   assert(/app\/dashboard\/page\.tsx/.test(r.stderr), 'flags Drizzle in component');
   assert(/app\/users\/page\.tsx/.test(r.stderr), 'flags Prisma in component');
   assert(/app\/api\/foo\/route\.ts/.test(r.stderr), 'flags db.transaction in route handler');
+  assert(/app\/properties\/page\.tsx/.test(r.stderr), 'flags two-level db.<table>.select in component');
   assert(!/src\/lib\/users\/repository\.ts/.test(r.stderr), 'does NOT flag inside repository');
   rmSync(root, { recursive: true, force: true });
 }

@@ -34,7 +34,7 @@
       "name": "data-access-pattern",
       "filesGlob": "**/*.{ts,tsx}",
       "excludeGlob": "src/lib/**/repository.ts,src/lib/**/queries.ts,src/db/**,src/server/db/**,**/*.test.ts,**/*.test.tsx",
-      "forbiddenPattern": "\\b(db|drizzle)\\.(query|select|insert|update|delete|from|transaction|execute|with)\\b|\\bprisma\\.\\w+\\.(findUnique|findFirst|findMany|create|createMany|update|updateMany|delete|deleteMany|upsert|count|aggregate|groupBy)\\b|\\bprisma\\.\\$transaction\\b",
+      "forbiddenPattern": "\\b(db|drizzle)(?:\\.\\w+)?\\.(query|select|insert|update|delete|from|transaction|execute|with)\\b|\\bprisma\\.\\w+\\.(findUnique|findFirst|findMany|create|createMany|update|updateMany|delete|deleteMany|upsert|count|aggregate|groupBy)\\b|\\bprisma\\.\\$transaction\\b",
       "skipIfMissing": "src/db/**",
       "message": "Direct ORM/database calls are forbidden outside src/lib/<feature>/repository.ts (or src/db/). This applies to React components (server or client), route handlers, server actions, jobs — all of them. Wrap the query in a repository function so callers depend on the domain interface, not the ORM. If your project uses a different data-access location, edit the excludeGlob in .claude/conventions.json."
     },
