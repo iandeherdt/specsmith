@@ -384,6 +384,76 @@ export const X = () => (
   rmSync(root, { recursive: true, force: true });
 }
 
+// ── Case 17b: no-inline-helpers-in-pages catches top-level helpers in page.tsx ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'no-inline-helpers-in-pages',
+      filesGlob: 'app/**/page.{tsx,jsx},src/app/**/page.{tsx,jsx}',
+      excludeGlob: '**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx',
+      forbiddenPattern: '^(?:function\\s+\\w+\\s*\\(|(?:const|let|var)\\s+\\w+\\s*=\\s*(?:\\([^)]*\\)|\\w+)\\s*=>)',
+      message: 'Extract helpers from page.tsx',
+    }],
+  });
+  // FLAG: camelCase factory function returning JSX
+  writeSrc(
+    root,
+    'app/properties/page.tsx',
+    'function propertyRow(p) { return <tr><td>{p.id}</td></tr>; }\nexport default function PropertiesPage() { return <table></table>; }\n'
+  );
+  // FLAG: arrow assignment returning JSX
+  writeSrc(
+    root,
+    'app/contracts/page.tsx',
+    'const filterBox = (props) => <div>{props.filter}</div>;\nexport default function ContractsPage() { return <main></main>; }\n'
+  );
+  // FLAG: PascalCase subcomponent declared inline
+  writeSrc(
+    root,
+    'app/dashboard/page.tsx',
+    'function PropertyCard(p) { return <article>{p.name}</article>; }\nexport default function DashboardPage() { return <section></section>; }\n'
+  );
+  // PASS: only the default export + framework exports
+  writeSrc(
+    root,
+    'app/clean/page.tsx',
+    'export const dynamic = "force-dynamic";\nexport async function generateMetadata() { return { title: "x" }; }\nexport default async function CleanPage() {\n  const handleClick = () => alert("ok");\n  const data = await getData();\n  return <main>{data.title}</main>;\n}\n'
+  );
+  const r = run(root);
+  assert(r.status === 1, 'rule fires when pages have inline helpers');
+  assert(/app\/properties\/page\.tsx/.test(r.stderr), 'flags camelCase propertyRow factory');
+  assert(/app\/contracts\/page\.tsx/.test(r.stderr), 'flags arrow filterBox');
+  assert(/app\/dashboard\/page\.tsx/.test(r.stderr), 'flags PascalCase PropertyCard');
+  assert(!/app\/clean\/page\.tsx/.test(r.stderr), 'does NOT flag clean page (only default export + framework exports + indented handler)');
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── Case 17c: page-size-cap fires only on page files and at a tighter cap ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'page-size-cap',
+      filesGlob: 'app/**/page.{tsx,jsx},src/app/**/page.{tsx,jsx}',
+      maxLines: 5,
+      message: 'page too long',
+    }],
+  });
+  // Way over the cap → fires
+  writeSrc(root, 'app/big/page.tsx', Array(10).fill('// line').join('\n') + '\n');
+  // Under the cap → does not fire
+  writeSrc(root, 'app/small/page.tsx', 'export default function P(){return null;}\n');
+  // Non-page TSX → does not fire even if oversize
+  writeSrc(root, 'src/components/Card.tsx', Array(20).fill('// line').join('\n') + '\n');
+  const r = run(root);
+  assert(r.status === 1, 'page-size-cap fires for oversize page');
+  assert(/app\/big\/page\.tsx/.test(r.stderr), 'flags oversize page');
+  assert(!/app\/small\/page\.tsx/.test(r.stderr), 'does NOT flag small page');
+  assert(!/src\/components\/Card\.tsx/.test(r.stderr), 'does NOT flag non-page component even if oversize');
+  rmSync(root, { recursive: true, force: true });
+}
+
 // ── Case 18: maxLines + forbiddenPattern both fire ──
 {
   const root = makeProject();

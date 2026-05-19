@@ -53,6 +53,22 @@
       "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",
       "maxLines": 300,
       "message": "Component file exceeds 300 lines. Files this large almost always mix concerns — view markup, state, data fetching, derivations, validation. Extract: data fetching to a hook (src/hooks/use<X>.ts), derivations to a selector (src/lib/<feature>/selectors.ts), validation to a schema file, sub-views to child components. The cap is a proxy for 'this component is doing too much' — the regex can't tell which kind of logic to extract; you decide. Tune `maxLines` in .claude/conventions.json if 300 is too tight or too loose for your project."
+    },
+
+    {
+      "name": "page-size-cap",
+      "filesGlob": "app/**/page.{tsx,jsx},src/app/**/page.{tsx,jsx}",
+      "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",
+      "maxLines": 150,
+      "message": "page.tsx exceeds 150 lines. Pages should be thin composition shells: server-side data fetch + a tree of child components, not the place where data shaping, JSX factories, or stateful logic live. The general `component-size-cap` at 300 is for child components — pages have a tighter budget because every line in a page tends to be a load-bearing layer (fetch → map → render). Extract: sub-views to `src/components/<Name>.tsx`, data shaping to `src/lib/<feature>/selectors.ts`, side-effect glue to a hook or server action. Tune `maxLines` in .claude/conventions.json if 150 is wrong for your project."
+    },
+
+    {
+      "name": "no-inline-helpers-in-pages",
+      "filesGlob": "app/**/page.{tsx,jsx},src/app/**/page.{tsx,jsx}",
+      "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",
+      "forbiddenPattern": "^(?:function\\s+\\w+\\s*\\(|(?:const|let|var)\\s+\\w+\\s*=\\s*(?:\\([^)]*\\)|\\w+)\\s*=>)",
+      "message": "Top-level helper / factory in page.tsx — extract to its own file. Pages should default-export ONE thing (the page component). Sibling declarations like `function propertyRow(p) { return <tr>... }`, `const filterBox = (props) => <div>...</div>`, or `function formatRows(rows) { ... }` belong elsewhere: JSX-returning helpers as components under `src/components/<Name>.tsx`, pure data shapers under `src/lib/<feature>/selectors.ts`, formatters under `src/lib/<feature>/format.ts`. The rule matches lines that start at column 0 with `function <name>(` or `const <name> = (...) =>` — Next.js framework exports (`export default`, `export async function generateMetadata`, `export const dynamic`, etc.) start with `export` and are not caught. Indented declarations inside the page body (hooks, handlers) are also not caught."
     }
   ],
 
