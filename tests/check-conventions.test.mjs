@@ -500,6 +500,48 @@ export const X = () => (
   rmSync(root, { recursive: true, force: true });
 }
 
+// ── Case 17d: one-component-per-file flags multi-component files, honours -helpers/-primitives ──
+{
+  const root = makeProject();
+  writeConv(root, {
+    rules: [{
+      name: 'one-component-per-file',
+      filesGlob: 'src/components/**/*.tsx',
+      excludeGlob: 'src/components/**/*-helpers.tsx,src/components/**/*-primitives.tsx,src/components/**/*.test.tsx,src/components/**/*.stories.tsx',
+      forbiddenPattern: 'function\\s+[A-Z]\\w+\\s*\\([\\s\\S]*?\\breturn\\s*\\(?\\s*<(?=[\\s\\S]*?function\\s+[A-Z]\\w+\\s*\\([\\s\\S]*?\\breturn\\s*\\(?\\s*<)',
+      patternFlags: 'm',
+      message: 'One component per file.',
+    }],
+  });
+  // FLAG: two PascalCase function components in one file
+  writeSrc(
+    root,
+    'src/components/Property.tsx',
+    'function PropertyCard(p) { return <article>{p.name}</article>; }\nexport function PropertyList(props) { return <ul>{props.items}</ul>; }\n'
+  );
+  // PASS: single component with a nested PascalCase helper (only one top-level return-< chain reaches a second `function`)
+  writeSrc(
+    root,
+    'src/components/Single.tsx',
+    'export function Page() {\n  function Row() { return <tr/>; }\n  return <table><Row/></table>;\n}\n'
+  );
+  // PASS: two components co-located in an *-helpers.tsx file (excluded by name)
+  writeSrc(
+    root,
+    'src/components/form-helpers.tsx',
+    'function Label(p) { return <label>{p.text}</label>; }\nfunction Hint(p) { return <small>{p.text}</small>; }\n'
+  );
+  const r = run(root);
+  assert(r.status === 1, 'one-component-per-file fires on multi-component file');
+  assert(/src\/components\/Property\.tsx/.test(r.stderr), 'flags the two-component file');
+  assert(!/src\/components\/Single\.tsx/.test(r.stderr), 'does NOT flag single component with nested helper');
+  assert(!/src\/components\/form-helpers\.tsx/.test(r.stderr), 'does NOT flag *-helpers.tsx co-location file');
+  // One violation per file (patternFlags has no `g`)
+  const hits = (r.stderr.match(/one-component-per-file/g) || []).length;
+  assert(hits === 1, `reports exactly one violation for the multi-component file (got ${hits})`);
+  rmSync(root, { recursive: true, force: true });
+}
+
 // ── Case 18: maxLines + forbiddenPattern both fire ──
 {
   const root = makeProject();

@@ -56,6 +56,15 @@
     },
 
     {
+      "name": "one-component-per-file",
+      "filesGlob": "src/components/**/*.tsx",
+      "excludeGlob": "src/components/**/*-helpers.tsx,src/components/**/*-primitives.tsx,src/components/**/*.test.tsx,src/components/**/*.stories.tsx",
+      "forbiddenPattern": "function\\s+[A-Z]\\w+\\s*\\([\\s\\S]*?\\breturn\\s*\\(?\\s*<(?=[\\s\\S]*?function\\s+[A-Z]\\w+\\s*\\([\\s\\S]*?\\breturn\\s*\\(?\\s*<)",
+      "patternFlags": "m",
+      "message": "Multiple JSX-returning component functions in a single file. Constitution IV (Component Separation): UI components MUST be extracted into their own files. Either (a) move each sub-component to its own .tsx file in the same directory, or (b) rename the file to *-helpers.tsx / *-primitives.tsx when several small components are intentionally co-located by design (the rule's excludeGlob honours those names). The pattern matches `function PascalCase(…) { … return <` declarations and reports one violation per file; a file whose extra components are arrow functions (`const X = () => <…>`) is NOT caught — split those by hand when they're genuinely distinct components."
+    },
+
+    {
       "name": "page-size-cap",
       "filesGlob": "app/**/page.{tsx,jsx},src/app/**/page.{tsx,jsx}",
       "excludeGlob": "**/*.test.tsx,**/*.test.jsx,**/*.stories.tsx,**/*.stories.jsx",

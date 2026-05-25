@@ -66,7 +66,7 @@ Opt in with:
 npx specsmith init --conventions
 ```
 
-This drops a starter `.claude/conventions.json` with four sensible default rules:
+This drops a starter `.claude/conventions.json` with sensible default rules. The most commonly useful ones:
 
 | Rule | What it catches |
 | --- | --- |
@@ -75,6 +75,7 @@ This drops a starter `.claude/conventions.json` with four sensible default rules
 | `data-access-pattern` | direct DB/ORM calls (`db.select/.insert/.transaction/...`, `prisma.<model>.findUnique/.create/.update/...`) anywhere outside `src/lib/**/repository.ts` or `src/db/**` — explicitly catches the "called the database from a component / route handler / job" anti-pattern |
 | `i18n-strings` | multi-word user-facing strings inlined in JSX or in a11y attributes (`placeholder`, `aria-label`, `title`, `alt`, `label`) |
 | `component-size-cap` | component files (in `src/components/**`, `components/**`, `app/**`) exceeding 300 lines — proxy for "this component mixes concerns; extract a hook, selector, or sub-component" |
+| `one-component-per-file` | two or more `function PascalCase(…) { … return <` components in one `src/components/**/*.tsx` file — Constitution IV (Component Separation). Files named `*-helpers.tsx` / `*-primitives.tsx` are the opt-out for intentional small-component co-location |
 
 Each rule is a JSON object with `name`, `filesGlob`, optional `excludeGlob`, optional `forbiddenPattern` (JS regex), optional `maxLines` (file size cap; one of `forbiddenPattern` or `maxLines` must be set, both is fine too), optional `patternFlags`, optional `skipIfMissing` (rule no-ops if the named glob has no matches), and `message`. Edit, add, or remove rules to fit this project's standards. The schema is documented inline in the file.
 
