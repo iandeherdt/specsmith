@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Public surface that is a **stable contract** for downstream projects:
 - skill names (`/grill-me`, `/write-prd`, `/plan`, `/grill-plan`, `/tasks`, `/build`, `/design`)
 - the `specs/NNN-<feature-slug>/` artifact layout in host projects
+- the `specs/glossary.md` project glossary location
 - the `.claude/constitution.md` location
 - the `.claude/specsmith/manifest.json` location
 
@@ -23,12 +24,13 @@ The skills implement a five-stage pipeline. Each feature gets its own git branch
 - **Folder layout (per feature):** `specs/NNN-<feature-slug>/` at the repo root, where `NNN` is allocated sequentially (`001`, `002`, …) by `/write-prd`. Lives at the repo root (not under `.claude/`) so the artifacts are first-class team documentation, not AI scratch.
 - **Branch:** `NNN-<feature-slug>` (matches the folder name). Created by `/write-prd` off whatever branch the user is currently on, inheriting any uncommitted changes. `/plan`, `/grill-plan`, and `/tasks` each derive the spec folder by parsing the current branch name — they never create branches of their own.
 - **Constitution:** stays at `.claude/constitution.md` (project policy / AI tooling config; not per-feature).
+- **Glossary:** `specs/glossary.md` — the project's cross-feature ubiquitous language. Seeded by `init`, grown by `/grill-me`, read by it on every run. Project-wide, not per-feature, so it lives alongside the numbered folders rather than inside one.
 
 | Stage | Skill | Input | Output |
 | --- | --- | --- | --- |
-| 1. Interrogate the idea | `/grill-me` | a prompt, customer feedback, bug, or gripe | conversation only (no file) |
-| 2. Capture requirements | `/write-prd` | the live conversation context | new branch `NNN-<slug>` + `specs/NNN-<slug>/prd.md` |
-| 3. Plan | `/plan` | `prd.md` + `.claude/constitution.md` | `plan.md` + `data-model.md` |
+| 1. Interrogate the idea | `/grill-me` | a prompt, customer feedback, bug, or gripe; `specs/glossary.md` | conversation; appends new canonical terms to `specs/glossary.md` |
+| 2. Capture requirements | `/write-prd` | the live conversation context; `specs/glossary.md` | new branch `NNN-<slug>` + `specs/NNN-<slug>/prd.md` |
+| 3. Plan | `/plan` | `prd.md` + `.claude/constitution.md` + `specs/glossary.md` | `plan.md` + `data-model.md` |
 | 4. Pressure-test the plan (optional) | `/grill-plan` | `plan.md` + `data-model.md` + `prd.md` + `.claude/constitution.md` | conversation + punch list (no file) |
 | 5. Decompose | `/tasks` | `plan.md` + `data-model.md` + `prd.md` | `tasks.md` |
 | 6. Build loop | `/build` | `tasks.md` + `plan.md` + `data-model.md` | implemented code; ticks `tasks.md` |
@@ -40,7 +42,8 @@ The skills implement a five-stage pipeline. Each feature gets its own git branch
 
 ## Key design decisions
 
-- **No transcript file from `/grill-me`.** It is a chat skill; the conversation context *is* the handoff. `/write-prd` must therefore run in the same session as `/grill-me` (or a session where the requirements have otherwise been discussed in detail).
+- **No transcript file from `/grill-me`.** It is a chat skill; the conversation context *is* the handoff. `/write-prd` must therefore run in the same session as `/grill-me` (or a session where the requirements have otherwise been discussed in detail). The one exception is `specs/glossary.md`: grill-me does not dump the transcript, but at the end of an interview it proposes (and on the user's yes, appends) a few canonical domain terms. That file is the durable cross-feature artifact; the transcript is not.
+- **Glossary is the project's ubiquitous language.** `specs/glossary.md` is created by `init` (seeded once, never overwritten or `update`-tracked — same ownership model as the constitution). `/grill-me`, `/write-prd`, and `/plan` all *read* it so the conversation, PRD, and plan converge on the same words; only `/grill-me` *writes* to it, growing it one terse entry at a time (and only on the user's confirmation). Minimal by design: domain concepts only, one line each. Kept project-wide (not per-feature) so the whole pipeline shares one vocabulary.
 - **Plan is detailed but not SpecKit-detailed.** `/plan` produces only `plan.md` (Technical Context, Constitution Check, Project Structure, Files-to-touch) and `data-model.md`. It does **not** generate `research.md`, `quickstart.md`, or `contracts/`.
 - **Constitution lives per-project.** `.claude/constitution.md` is created by `init`, edited by the team, and read by `/plan` to render the compliance table. The skill never invents a constitution.
 - **Tasks are not agent-bound.** No `(dev)` / `(design)` tags on tasks. The orchestrator routes; the evaluator verifies.
@@ -60,7 +63,7 @@ The skills implement a five-stage pipeline. Each feature gets its own git branch
 ├── agents/                # Claude Code subagent definitions (.md files)
 ├── skills/                # one folder per skill; some bundle templates/
 ├── scripts/               # trace-hook, env-facts, dev-server, etc. — installed to .claude/scripts/
-├── templates/             # constitution.md starter + claude-md-section.md
+├── templates/             # constitution.md + glossary.md starters + claude-md-section.md
 ├── launch.json            # debug configurations merged into host's .claude/launch.json
 ├── package.json
 ├── CLAUDE.md              # this file

@@ -18,6 +18,7 @@ Read in this order:
 1. `specs/NNN-<feature-slug>/prd.md` — the requirements
 2. `.claude/constitution.md` — the principles list to check the plan against
 3. `.claude/conventions.json` — machine-checkable code rules (optional; only present if the project opted in via `npx specsmith init --conventions`)
+4. `specs/glossary.md` — the project's ubiquitous language (optional). Use its canonical terms throughout the plan and data model; do not coin a synonym for a concept it already names. This skill only reads the glossary — `/grill-me` is what grows it.
 
 If `prd.md` is missing, stop and tell the user to run `/write-prd` first.
 If `.claude/constitution.md` is missing, stop and ask the user to create one (or run `npx specsmith init` if they have not). Do **not** invent a constitution.

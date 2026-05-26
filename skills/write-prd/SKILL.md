@@ -39,6 +39,7 @@ Numbers are stable identifiers. Once assigned, do not renumber when adding items
 
 ## Sourcing discipline
 
+- **Use the project's vocabulary.** Read `specs/glossary.md` if it exists and phrase requirements with its canonical terms. Do not introduce a synonym for a concept the glossary already names — the glossary is the project's ubiquitous language, and the PRD is downstream of it. (Writing new terms is `/grill-me`'s job, not this skill's; here you only consume them.)
 - Pull every requirement from something the user said in the conversation.
 - Do **not** invent requirements to fill template gaps. Log them as open questions instead.
 - If the user has not specified a success criterion for a goal, that is an `OQ`, not an `SC`.

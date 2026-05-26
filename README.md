@@ -38,7 +38,7 @@ This:
 1. Copies skills into `.claude/skills/` (one per skill, with bundled `templates/`)
 2. Copies subagent definitions into `.claude/agents/`
 3. Copies trace and helper scripts into `.claude/scripts/`
-4. Drops a starter `.claude/constitution.md` (skipped if you already have one)
+4. Drops a starter `.claude/constitution.md` and `specs/glossary.md` (each skipped if you already have one)
 5. Merges baseline `.claude/settings.json` (permissions, additional directories, trace hooks) and `.claude/launch.json` (debug configurations) — your existing entries are preserved
 6. Appends a "Real Dev Loop" section to your `CLAUDE.md` (created if missing)
 7. Runs `claude mcp add --scope project playwright -- npx @playwright/mcp@latest --isolated` so the evaluator and design-critique agents can drive a real browser
@@ -48,7 +48,7 @@ This:
 Useful flags:
 
 - `--dry-run` — preview without writing
-- `--force` — overwrite locally-modified files (including `constitution.md`)
+- `--force` — overwrite locally-modified files (including `constitution.md` and `glossary.md`)
 
 ### About the permissions init grants
 
@@ -342,7 +342,7 @@ Claude: For each phase with unchecked tasks:
 
 | Skill | Purpose | Output |
 | --- | --- | --- |
-| `/grill-me` | Interrogate a fresh idea, customer feedback, bug report, or gripe | conversation only |
+| `/grill-me` | Interrogate a fresh idea, customer feedback, bug report, or gripe | conversation; appends new domain terms to `specs/glossary.md` |
 | `/write-prd` | Synthesise the conversation into a Product Requirements Document | new branch + `prd.md` |
 | `/plan` | Translate the PRD into a technical plan and data model | `plan.md` + `data-model.md` |
 | `/grill-plan` | Pressure-test an existing plan adversarially | conversation + punch list |
@@ -384,8 +384,9 @@ In the host project after `npx specsmith init`:
 ├── launch.json                   # debug configurations
 └── specsmith/manifest.json   # SHA-256 of every installed file (for `update`)
 
-specs/                            # one folder per feature, created by /write-prd
-└── NNN-<feature-slug>/
+specs/                            # spec artifacts (first-class team docs)
+├── glossary.md                   # ubiquitous language — seeded at install, grown by /grill-me
+└── NNN-<feature-slug>/           # one folder per feature, created by /write-prd
     ├── prd.md
     ├── plan.md
     ├── data-model.md
@@ -410,6 +411,7 @@ pipeline/                         # runtime scratch — created at install, writ
 - **Subagent prompts** live at `.claude/agents/*.md`. Edit them to change how the developer or evaluator behaves. Edits are preserved across `update`.
 - **Skill prompts** live at `.claude/skills/*/SKILL.md`. Edit similarly.
 - **Constitution**: `.claude/constitution.md`. Never overwritten by `update`.
+- **Glossary**: `specs/glossary.md` — the project's ubiquitous language. Seeded once at install, then grown by `/grill-me` and edited by the team. Never overwritten or tracked by `update` (same ownership model as the constitution).
 
 The manifest at `.claude/specsmith/manifest.json` records the SHA-256 of every file at install time. `update` compares package version vs on-disk vs manifest to decide whether each file is safe to update or has been customised — see "Updating" below.
 
@@ -426,9 +428,9 @@ For each tracked file:
 - **user-modified** (on-disk differs from both) → skipped, logged for manual reconciliation
 - **missing on disk** → installed fresh
 
-The constitution and your `pipeline/*.md` files are never touched.
+The constitution, the glossary, and your `pipeline/*.md` files are never touched.
 
-`--dry-run` previews the diff without applying. `--force` (via `init --force`) overwrites everything including the constitution — use with care.
+`--dry-run` previews the diff without applying. `--force` (via `init --force`) overwrites everything including the constitution and glossary — use with care.
 
 ## Troubleshooting
 
@@ -444,7 +446,7 @@ The constitution and your `pipeline/*.md` files are never touched.
 
 ## Design decisions worth knowing
 
-- **No transcript file from `/grill-me`.** The conversation context *is* the handoff, so `/write-prd` must run in the same session as `/grill-me`.
+- **No transcript file from `/grill-me`.** The conversation context *is* the handoff, so `/write-prd` must run in the same session as `/grill-me`. The one durable thing it writes is `specs/glossary.md`: at the end of an interview it proposes a few canonical domain terms and, on your yes, appends them — building a **ubiquitous language** the whole pipeline can share. Minimal by design (one line per concept, domain terms only). `/grill-me`, `/write-prd`, and `/plan` all read it so the conversation, PRD, and plan converge on the same words; only `/grill-me` writes to it.
 - **Plan is detailed but not SpecKit-detailed.** `/plan` produces only `plan.md` + `data-model.md` — no `research.md`, `quickstart.md`, or `contracts/`. The plan template has Technical Context, Constitution Check, Project Structure, and Files-to-touch sections.
 - **Tasks are not agent-bound.** Tasks have no `(dev)` / `(design)` tags. The orchestrator routes; the evaluator decides "done".
 - **Numbering is stable.** `FR-###`, `NFR-###`, `SC-###`, `OQ-###` identifiers in `prd.md` are append-only — never renumber when adding items.
