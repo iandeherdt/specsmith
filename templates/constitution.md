@@ -40,12 +40,21 @@
      A specsmith-shipped helper exceeding 500 lines is specsmith's
      concern to refactor, not this project's.
   The rule targets cognitive load in hand-written project logic.
-- Functions MUST remain short and focused. Use SonarQube cognitive
-  complexity rules as the measure — high nesting depth, long
-  parameter lists, and deep indentation are violations.
+- Functions MUST remain short and focused. Cognitive complexity is the
+  measure — high nesting depth, long parameter lists, and deep
+  indentation are violations. This is enforced, not aspirational: the
+  project's ESLint config SHOULD carry the SonarJS rule set
+  (`eslint-plugin-sonarjs`), which ports SonarLint's cognitive-complexity
+  rules into the lint gate and runs with no Sonar server.
+- Duplication MUST be eliminated — duplicated string literals and
+  identical or near-identical functions are violations (SonarJS
+  `no-duplicate-string`, `no-identical-functions`).
 - Indentation depth MUST be minimized; prefer early returns and
   guard clauses over nested conditionals.
-- Code MUST pass linting and formatting checks before merge.
+- Code MUST pass linting and formatting checks before merge, with zero
+  warnings on changed files. Suppressing a SonarJS or lint finding
+  (`eslint-disable`, `// NOSONAR`) without an inline justification is
+  itself a violation.
 
 ### IV. Component Separation & File Organization
 

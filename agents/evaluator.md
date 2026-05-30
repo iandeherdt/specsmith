@@ -510,7 +510,7 @@ NOW you may read source code. Check for the current phase's stories:
    This is the same script the developer was supposed to run as their first quality gate. If it reports violations, the developer either skipped it or bypassed with `SPECSMITH_CONVENTIONS=0`. Treat any violation here as automatic **[High]** severity in your feedback — these rules are machine-checked, no judgment calls. Cite the file, line, and rule name from the script output verbatim. If `.claude/conventions.json` doesn't exist, the script no-ops and you continue.
 
 1. **Component separation**: Components in their own files. A `page.tsx` should be a thin composition shell, not a monolith. Everything in one file = **High** severity.
-2. **Code quality**: No file over the constitution's line cap. Functions are focused. Linting passes.
+2. **Code quality**: No file over the constitution's line cap. Functions are focused — no high cognitive complexity, no duplicated blocks. Linting passes with **zero warnings** on touched files, SonarJS rules (`eslint-plugin-sonarjs`) included. A remaining lint/SonarJS finding, or an unjustified `eslint-disable` / `// NOSONAR` suppression, is **High** severity — same machine-checked, no-judgment-call standing as the conventions gate above.
 3. **Test coverage**: Tests exist for acceptance criteria. They pass.
 
 ---

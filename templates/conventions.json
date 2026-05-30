@@ -1,6 +1,8 @@
 {
   "_doc": "Project conventions checked by .claude/scripts/check-conventions.mjs. Each rule scans changed files (staged + unstaged + last commit) for forbiddenPattern within filesGlob minus excludeGlob, and exits 1 if any match. Edit the rules below to fit your project — add new ones, remove ones that don't apply. The script ships with no rules of its own; this file is the source of truth. Bypass with SPECSMITH_CONVENTIONS=0.",
 
+  "_lintGateNote": "Cognitive complexity, duplication, and other SonarLint-style code smells are NOT regex-checkable and do NOT live here. They are enforced through the ESLint lint gate (agents/developer.md Step 4, item 3) via eslint-plugin-sonarjs — add that plugin to your project's ESLint config and the existing lint pass enforces SonarLint's rules with no Sonar server. See .claude/constitution.md Principle III.",
+
   "_schema": {
     "name": "stable identifier used in violation reports",
     "filesGlob": "comma-separated globs; ** matches across path segments, * does not",

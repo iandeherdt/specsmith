@@ -211,9 +211,21 @@ Do **not** flip `[ ]` → `[x]` in `tasks.md` yourself — that is the evaluator
    changed files. All tests for your changes must pass. Do NOT run the full
    suite here — save that for item 4 below.
 
-3. **Lint (targeted)**: If the lint script supports path arguments, lint
-   just your changed files; otherwise run it across the repo. Fix lint
-   errors in your diff only.
+3. **Lint (targeted)** — *hard blocker*: If the lint script supports
+   path arguments, lint just your changed files; otherwise run it across
+   the repo. Every file you touched must come back **clean — zero errors
+   AND zero warnings**, not "errors only". Your project's ESLint config
+   should carry the SonarJS rule set (`eslint-plugin-sonarjs`: cognitive
+   complexity, duplicated strings, identical functions, collapsible
+   conditionals, …). Those rules are the teeth behind the constitution's
+   "functions short and focused / no duplication" clauses, and they run
+   in the ordinary lint pass — no Sonar server involved. Do **not** quiet
+   a finding with an inline `eslint-disable` or `// NOSONAR` just to get
+   past the gate: either refactor until the rule stops firing (extract a
+   function to drop cognitive complexity, hoist a repeated literal to a
+   constant), or — if the suppression is genuinely warranted — justify it
+   in a comment on the same line. An unjustified suppression counts as a
+   violation, exactly like the finding it hides.
 
 4. **Final full-suite run (once, at the very end)**: Run the full test
    suite. If a test outside your scope fails and you did not touch related
