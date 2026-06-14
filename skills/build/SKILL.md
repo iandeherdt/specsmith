@@ -93,23 +93,20 @@ Per phase, max cycles: $MAX_CYCLES (default 5).
 Before invoking the developer or evaluator, extract just the lines for the phase in scope. Pass this as a fenced markdown block in both subagent prompts so neither has to re-read the full `tasks.md` every cycle — `tasks.md` typically runs 20–30 KB on a non-trivial feature, and re-reading it in both subagents on every cycle is pure waste.
 
 ```bash
-PHASE_NUM=2  # the phase number in scope
-awk -v n="$PHASE_NUM" '
-  /^## Phase / { in_target = ($0 ~ "^## Phase " n ":") }
-  in_target
-' specs/<latest-branch>/tasks.md
+PHASE_NUM=2  # the phase number in scope (reused by later steps)
+node .claude/scripts/phase-block.mjs specs/<latest-branch>/tasks.md "$PHASE_NUM"
 ```
 
 The output is the phase heading plus every `- [ ]` / `- [x]` task line under it, ending where the next `## ` heading starts. Hold this output as the **phase block**.
 
-**POSIX-awk gotcha for future modifications**: `\b` word boundaries are a GNU extension and are NOT in POSIX awk. If you ever need ID-based matching here (e.g. matching `T001` but not `T0010`), match the literal trailing space (`T001 `) rather than reaching for `\b`. Mis-matched IDs silently produce empty phase blocks, which then look like "no work to do" to the developer.
+**Always use the script — do not hand-roll the extraction with `awk`/`grep`.** The script exists precisely because the inline awk it replaced was repeatedly retyped and mangled by the orchestrator (e.g. dropping the `$0` before `~`), which threw a syntax error and silently produced an empty block — indistinguishable from "no work to do". The script anchors on `## Phase N:` so Phase 5 never matches Phase 50, and exits non-zero (with a message on stderr) if phase N isn't found, so a typo'd phase number fails loudly instead of silently returning nothing.
 
 ### Step 0b — Slice large phases before dispatch
 
-Count unchecked `- [ ]` tasks in the phase block:
+Count unchecked `- [ ]` tasks in the phase block with the same script:
 
 ```bash
-UNCHECKED=$(printf '%s\n' "$PHASE_BLOCK" | grep -c '^- \[ \]')
+UNCHECKED=$(node .claude/scripts/phase-block.mjs specs/<latest-branch>/tasks.md "$PHASE_NUM" --count)
 ```
 
 If `UNCHECKED > $SLICE_THRESHOLD` (default `8`), do NOT dispatch the whole phase as one developer call. Single subagents stall on large phases — they run out of attention partway through, the orchestrator pays for a half-completed run, and the work has to be redone in slices anyway (this is exactly what happened in Phase 2 of `006-property-compliance-and-finance`, where a 13-file dispatch had to be split into 3 retroactively).

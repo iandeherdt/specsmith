@@ -298,9 +298,18 @@ to any tracking files.
   takes more than a few seconds (full test suite, repo-wide typecheck,
   build), tee its output to a file once and grep the file as many
   times as you need — do NOT re-invoke the command to grep
-  differently. `npm test 2>&1 | tee /tmp/test-out.txt`, then
-  `grep "FAIL " /tmp/test-out.txt`, `grep "^FAIL " /tmp/test-out.txt`,
-  etc. Each redundant re-run is dead wall time you can't get back.
+  differently. Each redundant re-run is dead wall time you can't get back.
+  **Tee to a stable, predictable path — not a fresh ad-hoc name per run.**
+  Use one fixed file per command class and overwrite it:
+  `pipeline/traces/last-test.log` for tests, `last-typecheck.log` for
+  typecheck, `last-build.log` for builds. So:
+  `npm test 2>&1 | tee pipeline/traces/last-test.log`, then
+  `grep "FAIL " pipeline/traces/last-test.log` as many times as needed.
+  Inventing a new name each run (`/tmp/test-c2.txt`, `/tmp/test-c2b.txt`,
+  …) means a later turn can't find the output it wrote and falls back to
+  `cat A || cat B || echo NOT FOUND` guessing — wasteful and error-prone.
+  A fixed path is always findable and is cleared between runs by
+  `clean-run-artifacts.mjs`.
 - **Chasing pre-existing errors**: If typecheck/lint flags a file you never
   touched and never imported from, note it and move on. It's not your bug.
 - **Refactoring without a callsite audit**: Before changing the call
