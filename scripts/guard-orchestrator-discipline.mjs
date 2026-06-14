@@ -24,8 +24,9 @@
 // (i.e. inside a /build run). Manual sessions where a human is iterating
 // on the dev server directly are not blocked.
 
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { resolve, sep, relative } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { readStdin, safeJsonParse, toRelPosix } from './lib/hook-io.mjs';
 
 const RUN_STATE_FILE = 'pipeline/run-state.md';
 const DISPATCH_LOCK_FILE = 'pipeline/dispatch-active.txt';
@@ -54,22 +55,6 @@ const FORBIDDEN_PATH_PREFIXES = [
   'pipeline/dev-server-url',
   'pipeline/designs-server-url',
 ];
-
-function readStdin() {
-  try { return readFileSync(0, 'utf8'); } catch { return ''; }
-}
-
-function safeJsonParse(s) {
-  try { return JSON.parse(s); } catch { return null; }
-}
-
-function toRelPosix(cwd, p) {
-  if (!p) return null;
-  const abs = resolve(cwd, p);
-  const rel = relative(cwd, abs);
-  if (rel.startsWith('..')) return null;
-  return rel.split(sep).join('/');
-}
 
 function extractTargetPath(payload) {
   const tool = payload.tool_name;

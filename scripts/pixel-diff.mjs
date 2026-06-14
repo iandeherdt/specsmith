@@ -20,7 +20,7 @@
 //
 // Output: JSON to stdout. Exit 0 on pass or skip, 1 on fail, 2 on error.
 
-import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import {
   STUCK_DELTA_PP,
@@ -28,6 +28,7 @@ import {
   effectiveMaxDiffPct,
   bucketDiffPixels,
 } from './pixel-diff-lib.mjs';
+import { parseViewport, readUrlFile, discoverDesignRoutes, emit } from './lib/diff-io.mjs';
 
 // Re-export the pure helpers so existing test code and external callers
 // that `import { ... } from './pixel-diff.mjs'` keep working. New code can
@@ -107,35 +108,6 @@ function loadConfig() {
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed.pixelDiff !== 'object' || parsed.pixelDiff === null) return null;
   return { ...DEFAULTS, ...parsed.pixelDiff };
-}
-
-function parseViewport(s) {
-  const m = String(s).match(/^(\d+)x(\d+)$/);
-  if (!m) return { width: 1280, height: 800 };
-  return { width: Number(m[1]), height: Number(m[2]) };
-}
-
-function discoverRoutes() {
-  const designsDir = join(CWD, 'designs');
-  if (!existsSync(designsDir)) return [];
-  const out = [];
-  for (const entry of readdirSync(designsDir)) {
-    if (!entry.endsWith('.html')) continue;
-    const slug = entry.replace(/\.html$/, '');
-    const route = slug === 'index' ? '/' : `/${slug}`;
-    out.push({ design: `designs/${entry}`, route });
-  }
-  return out;
-}
-
-function readUrlFile(path) {
-  if (!existsSync(path)) return null;
-  try { return readFileSync(path, 'utf8').trim(); } catch { return null; }
-}
-
-function emit(payload, exitCode) {
-  process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
-  process.exit(exitCode);
 }
 
 function loadPriorRun(outDir) {
@@ -308,7 +280,7 @@ async function main() {
     }, 0);
   }
 
-  let routes = args.routesOverride ?? cfg.routes ?? discoverRoutes();
+  let routes = args.routesOverride ?? cfg.routes ?? discoverDesignRoutes(CWD);
   let scoped = false;
   if (args.onlyRoutes && args.onlyRoutes.length) {
     const allow = new Set(args.onlyRoutes);

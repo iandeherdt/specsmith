@@ -21,9 +21,10 @@
 // Usage: dom-diff.mjs [--out <dir>] [--routes <json>] [--storage-state <path>]
 // Output: JSON to stdout. Exit 0 on pass / skip, 1 on fail, 2 on error.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { compareSnapshots, normaliseText, resolveRoutes, resolveStorageState } from './dom-diff-lib.mjs';
+import { parseViewport, readUrlFile, discoverDesignRoutes, emit } from './lib/diff-io.mjs';
 
 const CWD = process.cwd();
 const CONVENTIONS_PATH = join(CWD, '.claude', 'conventions.json');
@@ -102,34 +103,6 @@ function loadConfig() {
   };
 }
 
-function parseViewport(s) {
-  const m = String(s).match(/^(\d+)x(\d+)$/);
-  if (!m) return { width: 1280, height: 800 };
-  return { width: Number(m[1]), height: Number(m[2]) };
-}
-
-function discoverRoutes() {
-  const designsDir = join(CWD, 'designs');
-  if (!existsSync(designsDir)) return [];
-  const out = [];
-  for (const entry of readdirSync(designsDir)) {
-    if (!entry.endsWith('.html')) continue;
-    const slug = entry.replace(/\.html$/, '');
-    const route = slug === 'index' ? '/' : `/${slug}`;
-    out.push({ design: `designs/${entry}`, route });
-  }
-  return out;
-}
-
-function readUrlFile(path) {
-  if (!existsSync(path)) return null;
-  try { return readFileSync(path, 'utf8').trim(); } catch { return null; }
-}
-
-function emit(payload, exitCode) {
-  process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
-  process.exit(exitCode);
-}
 
 async function loadDeps() {
   try {
@@ -302,7 +275,7 @@ async function main() {
     override: args.routesOverride,
     domDiffRoutes: cfg.routes,
     pixelDiffRoutes: cfg._pixelDiffRoutes,
-    discoveredFn: discoverRoutes,
+    discoveredFn: () => discoverDesignRoutes(CWD),
   });
   let routes = resolved.routes;
   let scoped = false;

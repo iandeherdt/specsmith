@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { resolveTracePath, shortId } from './trace-path.mjs';
+import { readStdin, safeJsonParse } from './lib/hook-io.mjs';
 
 const OVERRIDE_VAR = 'SPECSMITH_GUARD_OVERRIDE';
 
@@ -35,14 +36,6 @@ const STATE_WIPE_THRESHOLD = 2; // i.e. this would be the 3rd
 // 30-line helper script already existed for that purpose.
 const LONG_INLINE_RE = /\b(python3?|node|perl|ruby|php|deno|bun)\s+(?:-[a-zA-Z]\s+)*-(?:e|c|r)\s+(["'])([\s\S]+?)\2/;
 const LONG_INLINE_CHARS = 200;
-
-function readStdin() {
-  try { return readFileSync(0, 'utf8'); } catch { return ''; }
-}
-
-function safeJsonParse(s) {
-  try { return JSON.parse(s); } catch { return null; }
-}
 
 // If the command is wrapped in `node -e "..."` / `bash -c "..."` / `sh -c "..."`,
 // pull the inner code out. Agents reach for these wrappers when the guard

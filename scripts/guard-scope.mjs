@@ -23,7 +23,8 @@
 // won't work for an agent dodging a block.
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve, sep, relative } from 'node:path';
+import { resolve } from 'node:path';
+import { readStdin, safeJsonParse, toRelPosix } from './lib/hook-io.mjs';
 
 const PROTECTED_PREFIXES = [
   '.claude/scripts/',
@@ -36,25 +37,6 @@ const PROTECTED_PREFIXES = [
 const WAIVER_FILE = 'pipeline/scope-waiver.txt';
 const OVERRIDE_VAR = 'SPECSMITH_SCOPE_OVERRIDE';
 const PROTECTED_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
-
-function readStdin() {
-  try { return readFileSync(0, 'utf8'); } catch { return ''; }
-}
-
-function safeJsonParse(s) {
-  try { return JSON.parse(s); } catch { return null; }
-}
-
-// Normalise a path to a project-relative POSIX form so glob-style prefix
-// comparison works on both macOS/Linux and Windows.
-function toRelPosix(cwd, p) {
-  if (!p) return null;
-  // Absolute? Make relative to cwd. Already relative? Use as-is.
-  const abs = resolve(cwd, p);
-  const rel = relative(cwd, abs);
-  if (rel.startsWith('..')) return null; // outside the project, not our concern
-  return rel.split(sep).join('/');
-}
 
 function extractTargetPath(payload) {
   const tool = payload.tool_name;
