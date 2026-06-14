@@ -22,6 +22,14 @@
   },
   "license": "MIT",
   "author": "Ian De Herdt",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iandeherdt/specsmith.git"
+  },
+  "homepage": "https://github.com/iandeherdt/specsmith#readme",
+  "bugs": {
+    "url": "https://github.com/iandeherdt/specsmith/issues"
+  },
   "keywords": [
     "claude-code",
     "skills",
