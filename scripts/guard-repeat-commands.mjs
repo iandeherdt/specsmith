@@ -37,6 +37,18 @@ const STATE_WIPE_THRESHOLD = 2; // i.e. this would be the 3rd
 const LONG_INLINE_RE = /\b(python3?|node|perl|ruby|php|deno|bun)\s+(?:-[a-zA-Z]\s+)*-(?:e|c|r)\s+(["'])([\s\S]+?)\2/;
 const LONG_INLINE_CHARS = 200;
 
+// Mining the per-session trace JSONL as agent memory. Both the developer and
+// evaluator agents are told, in prose, to NEVER grep / cat / tail / wc / parse
+// `pipeline/traces/*.jsonl` — the trace is write-only telemetry for the human
+// and `trace-summarise.mjs`, not a memory store; the durable cross-cycle facts
+// belong in `pipeline/environment-facts.md`. Prose bans get ignored: an audit
+// of a 3-hour /build run found 22 trace-greps in a single 90-minute window
+// (`grep '"tool":"Edit"' …jsonl`, `grep '"phase":"pre"' …jsonl`, `wc -l …jsonl`)
+// despite the ban shipping in v0.23. Enforce it.
+const TRACE_JSONL_RE = /pipeline\/traces\/[^\s'"]*\.jsonl/;
+// The only sanctioned readers of the raw trace name themselves in the command.
+const TRACE_SANCTIONED_RE = /trace-summarise\.mjs|trace-path\.mjs/;
+
 // If the command is wrapped in `node -e "..."` / `bash -c "..."` / `sh -c "..."`,
 // pull the inner code out. Agents reach for these wrappers when the guard
 // blocks the direct form, so we collapse the wrapped variant to the same
@@ -245,7 +257,35 @@ function main() {
     }
   }
 
-  // Rule 3: repeated state wipes of the same path.
+  // Rule 3: reading the per-session trace JSONL directly. The trace is
+  // write-only telemetry; mining it as memory (grep/cat/wc/sed/python parse)
+  // is a documented anti-pattern that still happens because prose can't stop
+  // it. The fact you're reaching for belongs in pipeline/environment-facts.md.
+  if (TRACE_JSONL_RE.test(cmd) && !TRACE_SANCTIONED_RE.test(cmd)) {
+    deny(
+      `Refusing this command — it reads the per-session trace at ` +
+      `\`pipeline/traces/*.jsonl\` directly.\n` +
+      `\n` +
+      `The trace is write-only telemetry for the human and ` +
+      `\`trace-summarise.mjs\`, NOT agent memory. Grepping/cat-ing/parsing it ` +
+      `to recover "what did I do earlier" is the single most common source of ` +
+      `repeat-command churn in long runs.\n` +
+      `\n` +
+      `Do this instead:\n` +
+      `  - The durable cross-cycle facts (commands that worked, ports, stale ` +
+      `artifacts) belong in \`pipeline/environment-facts.md\`. Read that.\n` +
+      `  - If the fact you need isn't there, it was never recorded — record it ` +
+      `there now so the next cycle doesn't pay this cost either.\n` +
+      `  - For a human-facing summary of the run, use ` +
+      `\`node .claude/scripts/trace-summarise.mjs\` — the one sanctioned reader.\n` +
+      `\n` +
+      `Do NOT wrap the read in python3/node/jq or a different tool to dodge ` +
+      `this block — the trace is not the right source regardless of how you ` +
+      `parse it.`
+    );
+  }
+
+  // Rule 4: repeated state wipes of the same path.
   if (STATE_WIPE_RE.test(cmd)) {
     const prior = countRecentWipes(events, cmd);
     if (prior >= STATE_WIPE_THRESHOLD) {

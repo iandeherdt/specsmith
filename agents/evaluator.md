@@ -451,10 +451,44 @@ If `designs/coverage.md` exists (written by the designing-interfaces agent), use
 - Split layout → implementation must match the split
 - Fundamentally different layout = **High severity, phase cannot pass**
 
-**Details — use `mcp__playwright__browser_evaluate` running `getComputedStyle(document.querySelector('<selector>'))` (or rely on `mcp__playwright__browser_snapshot`) — [Med] severity if wrong:**
+**Details — batch the computed-style probe into ONE `browser_evaluate` call — [Med] severity if wrong:**
 - Colours, typography, spacing, border radii, shadows
 - Interactive states (hover, focus, active)
 - Responsive behaviour
+
+Do NOT call `getComputedStyle(document.querySelector('<selector>'))` once per
+element per property — that is one model round-trip per probe, and a fidelity
+pass touching a dozen elements turns into dozens of sequential `browser_evaluate`
+calls (the dominant cost in long evaluation cycles is the number of round-trips,
+not the work each one does). Decide the full list of selectors and properties
+you care about FIRST — derive them from the failed pixel-diff `regions[]`, the
+`designs/coverage.md` component list, and the prototype HTML — then probe them
+all in a **single** `browser_evaluate` that returns one keyed object:
+
+```js
+() => {
+  // selector → properties of interest for this fidelity check
+  const probe = {
+    '.hero h1':   ['fontSize', 'lineHeight', 'fontWeight', 'color', 'marginBottom'],
+    'header nav': ['gap', 'paddingTop', 'paddingBottom', 'height'],
+    '.card':      ['padding', 'borderRadius', 'boxShadow', 'gap'],
+  };
+  const out = {};
+  for (const [sel, props] of Object.entries(probe)) {
+    const el = document.querySelector(sel);
+    if (!el) { out[sel] = null; continue; } // null = selector missed; fix the selector, don't re-probe blindly
+    const cs = getComputedStyle(el);
+    out[sel] = Object.fromEntries(props.map((p) => [p, cs[p]]));
+  }
+  return out;
+}
+```
+
+One call, one result table you compare against the prototype's values. Only
+issue a second `browser_evaluate` if the first surfaced a `null` (selector
+wrong) or revealed a new element you now need to inspect — never to fetch "the
+next property" of an element you already had in hand. Return plain synchronous
+values only (see the Promise caveat in 2a).
 
 After the comparison, stop the designs server with `pkill -f 'serve designs'` and remove `pipeline/designs-server-url`.
 

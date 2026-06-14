@@ -218,5 +218,28 @@ function evt(ts, tool, extra = {}) {
   rmSync(cwd, { recursive: true, force: true });
 }
 
+// ── Case 14: grepping the trace JSONL as memory → DENY ──
+// Audit 2026-06-15: a 90-min window had 22 trace-greps (`grep '"tool":"Edit"'
+// …jsonl`, `grep '"phase":"pre"' …jsonl`, `wc -l …jsonl`) despite the prose ban.
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  const r = runHook(cwd, 'abcd1234', `grep '"tool":"Edit"' /home/x/pipeline/traces/2026-06-15T00-49-35-bcd56d70.jsonl`);
+  assert(r.status === 2, 'denies grepping pipeline/traces/*.jsonl');
+  assert(/environment-facts/.test(r.stderr), 'stderr points at environment-facts.md');
+  const r2 = runHook(cwd, 'abcd1234', 'wc -l pipeline/traces/foo.jsonl');
+  assert(r2.status === 2, 'denies wc -l on the trace jsonl');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
+// ── Case 15: sanctioned trace reader is ALLOWED ──
+{
+  const cwd = makeCwd();
+  writeTrace(cwd, 'abcd1234', []);
+  const r = runHook(cwd, 'abcd1234', 'node .claude/scripts/trace-summarise.mjs pipeline/traces/foo.jsonl');
+  assert(r.status === 0, 'allows trace-summarise.mjs even though it names the jsonl path');
+  rmSync(cwd, { recursive: true, force: true });
+}
+
 console.log(failures === 0 ? '\nAll tests passed.' : `\n${failures} test(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

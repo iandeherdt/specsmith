@@ -296,6 +296,16 @@ to any tracking files.
 - **Re-reading files you just read**: If you read a file earlier in this
   session, trust that context. Re-read only if a command you ran could have
   changed it.
+- **Re-extracting immutable git blobs**: `git show <ref>:<path>` and
+  `git show <ref>` against a commit SHA or tag return the **exact same bytes**
+  every time — the ref is frozen. Re-running `git show f0baa11:components/Card.tsx`
+  four times across a fidelity-debugging loop is four identical outputs and
+  four wasted round-trips (this was ~half of all Bash calls in one audited
+  90-minute window). Extract a baseline you need to keep referencing **once**
+  into a scratch file and read that file thereafter:
+  `git show <ref>:<path> > pipeline/scratch/baseline-Card.tsx` (gitignored),
+  then `Read` it. `git diff <ref> -- <path>` is the exception — it changes as
+  you edit, so re-running it after an edit is legitimate.
 - **Tailing full logs**: Use `tail -N` with a small N. Full log dumps pollute
   context for every subsequent turn.
 - **`head`/`tail` on generated, minified, or barrel-export files**: `head` and
