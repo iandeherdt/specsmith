@@ -86,5 +86,6 @@ The install plan is **dynamic**: `lib/utils.mjs#buildInstallPlan` walks `agents/
 - `node bin/cli.mjs --help` — print CLI help locally without npm install
 - `node bin/cli.mjs init --dry-run` — preview an install against the current directory
 - `node bin/cli.mjs update --dry-run` — preview what an update would change
+- `npm test` — run the test suite (plain `node` test files under `tests/`, one per guard hook / diff script)
 
-There are no build/test/lint commands yet — no test suite exists. The CLI is plain ESM, no transpilation.
+There is no build or lint step — the CLI is plain ESM, no transpilation.
