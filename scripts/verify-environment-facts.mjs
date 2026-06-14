@@ -49,6 +49,18 @@ function info(msg) {
   process.stdout.write(`  · ${msg}\n`);
 }
 
+// A prominent warning that does NOT block handoff (exit code unchanged).
+// Used for "you're leaving value on the table" signals — e.g. an empty facts
+// cache — that shouldn't fail cycle 1 or genuinely test-less projects.
+function warn(msg, detail) {
+  process.stdout.write(`  ⚠ ${msg}\n`);
+  if (detail) {
+    for (const line of String(detail).split('\n')) {
+      process.stdout.write(`      ${line}\n`);
+    }
+  }
+}
+
 // -----------------------------------------------------------------------
 // Check 1 — No orphan dev servers
 // -----------------------------------------------------------------------
@@ -471,6 +483,55 @@ function checkFileSizes() {
 }
 
 // -----------------------------------------------------------------------
+// Check 5 — Facts cache is actually being populated
+// -----------------------------------------------------------------------
+//
+// The whole point of environment-facts.md is "discover once, cache". A
+// recurring failure mode (caught in the 2026-06-14 build trace) is that the
+// cache is NEVER written across a whole multi-cycle run, so every cycle
+// re-derives the test/typecheck/e2e commands — re-reading playwright.config.ts,
+// trying alternate invocation styles, even parsing pipeline/traces/*.jsonl as
+// a memory substitute. We can't tell from here whether a cycle "ran tests",
+// so this is a loud WARNING, not a failure: it never blocks cycle 1 or a
+// genuinely test-less project, but it nags when the cache is empty or has no
+// command recorded.
+
+const COMMAND_TOKENS_RE = /\b(vitest|jest|playwright|test:e2e|npm test|tsc|mocha|pytest|go test|cargo test)\b/i;
+
+function checkEnvFactsPopulated() {
+  const envFactsPath = join(ROOT, 'pipeline', 'environment-facts.md');
+  if (!existsSync(envFactsPath)) {
+    warn(
+      'pipeline/environment-facts.md does not exist yet',
+      'Record the resolved typecheck / test / e2e commands (verbatim, with flags)\n' +
+      'the first time each one passes, so the next cycle and the evaluator reuse\n' +
+      'them instead of re-deriving. Never parse pipeline/traces/*.jsonl as memory.'
+    );
+    return;
+  }
+  let content = '';
+  try { content = readFileSync(envFactsPath, 'utf8'); } catch { /* ignore */ }
+  if (content.trim() === '') {
+    warn(
+      'pipeline/environment-facts.md is empty',
+      'Nothing has been cached. Record the resolved typecheck / test / e2e\n' +
+      'commands (verbatim, with flags) so future cycles skip rediscovery.'
+    );
+    return;
+  }
+  if (!COMMAND_TOKENS_RE.test(content)) {
+    warn(
+      'pipeline/environment-facts.md records no test/typecheck command',
+      'No recognizable test runner (vitest/jest/playwright/tsc/test:e2e/…) is\n' +
+      'recorded. If this project runs tests, record the exact working command —\n' +
+      'including any --project flag or env-var prefix — so it is not re-derived.'
+    );
+    return;
+  }
+  pass('environment-facts.md records test/typecheck command(s)');
+}
+
+// -----------------------------------------------------------------------
 // Run
 // -----------------------------------------------------------------------
 
@@ -479,6 +540,7 @@ checkNoOrphanDevServers();
 checkDbPathConsistency();
 checkMigrationDrift({ root: ROOT, pass, fail, info });
 checkFileSizes();
+checkEnvFactsPopulated();
 
 if (failures > 0) {
   process.stdout.write(`\n${failures} check(s) failed — fix before handoff.\n`);

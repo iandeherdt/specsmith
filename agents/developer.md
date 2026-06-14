@@ -33,9 +33,15 @@ Discover the following as you go and append each to
 - Env file path (commonly `.env.local`) and how to source it for scripts
   (e.g. `set -a; . .env.local; set +a; <command>`).
 - Typecheck command (e.g. `npx tsc --noEmit` or a project-specific script).
-- Test commands:
-  - Targeted: e.g. `npx vitest run <path>`, `npx jest <path>` — use by default
-  - Full suite: e.g. `npx vitest run` — only before handoff to evaluator
+- Test commands — record the **exact command string that actually worked**,
+  verbatim, including flags and any required env-var prefix (e.g.
+  `PLAYWRIGHT_BASE_URL=…`). Capture each the first time it passes:
+  - Unit/targeted: e.g. `npx vitest run <path>`, `npx jest <path>` — use by default
+  - Unit/full suite: e.g. `npx vitest run` — only before handoff to evaluator
+  - E2E: the project's real e2e invocation, e.g. `npm run test:e2e -- <spec>`
+    or `npx playwright test --project=chromium <spec>`. Resolve the canonical
+    form ONCE (read `package.json`'s `test:e2e` script / `playwright.config.ts`
+    a single time) and record it — do not rediscover the invocation per run.
 - Lint command (verify the script exists in package.json once per session).
 - Dev server command (commonly `npm run dev`). The evaluator drives the
   app through Playwright MCP pointed at a normal localhost URL, so you do
@@ -70,6 +76,13 @@ When you write to `pipeline/environment-facts.md`:
    message: "Corrected environment-facts.md: <what and why>".
 4. Never record two mutually exclusive versions of the same fact in
    different sections.
+5. The facts file is your ONLY cross-cycle memory. To recover how a command
+   was run in a prior cycle, read `pipeline/environment-facts.md` — **never
+   grep, tail, or parse `pipeline/traces/*.jsonl`**. The trace is write-only
+   telemetry for the human and `trace-summarise.mjs`; mining it as memory (and
+   the inline `python3 -c '…'` one-liners that takes) is wasted work that
+   means the fact was never recorded where it belongs. If you reached for the
+   trace, record the missing fact here instead.
 
 ---
 

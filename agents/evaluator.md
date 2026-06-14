@@ -58,6 +58,11 @@ Discover the following as you go and append each to
 - Typecheck command (e.g. `npx tsc --noEmit` or a project-specific script).
 - Test command for targeted runs (e.g. `npx vitest run <path>`,
   `npx jest <path>`) — avoid whole-suite commands.
+- E2E test command — record the **exact invocation that worked**, verbatim,
+  including the `--project` flag and any env-var prefix (e.g.
+  `PLAYWRIGHT_BASE_URL=…`). Resolve it ONCE from `package.json`'s `test:e2e`
+  script / `playwright.config.ts`; once recorded, reuse it verbatim instead of
+  re-reading the config or trying alternate invocation styles.
 - Auth credentials location if Step 0b applies (file path + variable names
   only — never copy secrets into the facts file).
 - Any other stable project fact you needed discovery commands to find
@@ -90,6 +95,11 @@ When you write to `pipeline/environment-facts.md`:
    file: "Corrected environment-facts.md: <what and why>".
 4. Never record two mutually exclusive versions of the same fact in
    different sections.
+5. The facts file is your ONLY cross-cycle memory. To recover how something
+   ran in a prior cycle, read `pipeline/environment-facts.md` — **never grep,
+   tail, or parse `pipeline/traces/*.jsonl`**. The trace is write-only
+   telemetry for the human and `trace-summarise.mjs`, not agent memory; if you
+   reached for it, record the missing fact here instead.
 
 ---
 
